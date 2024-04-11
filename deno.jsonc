@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "dev": "deno run -A --watch ./src/server.ts"
+  },
+  "imports": {
+    "$std/": "https://deno.land/std@0.220.0/"
+  }
+}
