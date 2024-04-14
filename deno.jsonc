@@ -4,5 +4,32 @@
   },
   "imports": {
     "$std/": "https://deno.land/std@0.220.0/"
+  },
+  "lint": {
+    "rules": {
+      "include": [
+        "eqeqeq",
+        "no-eval",
+        "no-undef",
+        "camelcase",
+        "no-console",
+        "prefer-ascii",
+        "guard-for-in",
+        "no-const-assign",
+        "no-self-compare",
+        "no-sparse-arrays",
+        "no-throw-literal",
+        "no-await-in-loop",
+        "no-external-import",
+        "no-non-null-assertion",
+        "single-var-declarator",
+        "no-sync-fn-in-async-fn",
+        "triple-slash-reference",
+        "verbatim-module-syntax",
+        "explicit-function-return-type",
+        "explicit-module-boundary-types",
+        "no-non-null-asserted-optional-chain"
+      ]
+    }
   }
 }

@@ -27,7 +27,7 @@ const ALPHABET = [
   "z",
 ];
 
-export function encrypt(key: number, plaintext: string) {
+export function encrypt(key: number, plaintext: string): string {
   const plaintextArray = [...plaintext.toLocaleLowerCase()];
 
   const plaintextIndexed = plaintextArray.map((char) => ALPHABET.indexOf(char));
@@ -43,7 +43,7 @@ export function encrypt(key: number, plaintext: string) {
   return ciphertext;
 }
 
-export function decrypt(key: number, ciphertext: string) {
+export function decrypt(key: number, ciphertext: string): string {
   const ciphertextArray = [...ciphertext];
 
   const ciphertextIndexed = ciphertextArray.map((char) =>

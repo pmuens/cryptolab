@@ -1,6 +1,6 @@
 import { assert } from "$std/assert/mod.ts";
 
-export function getRandomNumber(bytes = 32, modulus?: bigint) {
+export function getRandomNumber(bytes = 32, modulus?: bigint): bigint {
   const array = new Uint8Array(bytes);
 
   crypto.getRandomValues(array);
@@ -19,13 +19,13 @@ export function getRandomNumber(bytes = 32, modulus?: bigint) {
   return number;
 }
 
-export function mod(a: bigint, b: bigint) {
+export function mod(a: bigint, b: bigint): bigint {
   const result = a % b;
   return result >= 0 ? result : result + b;
 }
 
 // LSB -> MSB.
-export function* toBinary(number: bigint) {
+export function* toBinary(number: bigint): Generator<bigint, void, unknown> {
   while (number) {
     yield number & 1n;
     number >>= 1n;
@@ -35,7 +35,7 @@ export function* toBinary(number: bigint) {
 // See: https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm#Pseudocode
 // See: https://brilliant.org/wiki/extended-euclidean-algorithm
 // Returns [gcd, x, y] such that `(a * x) + (b * y) = gcd` (`gcd` -> `gcd(a, b)`).
-export function egcd(a: bigint, b: bigint) {
+export function egcd(a: bigint, b: bigint): bigint[] {
   let x = 0n;
   let y = 1n;
   let u = 1n;
@@ -61,7 +61,7 @@ export function egcd(a: bigint, b: bigint) {
 
 // Returns multiplicative inverse of `number` modulo `modulus`.
 // Returns integer `x` s.th. `(number * x) % modulus === 1`.
-export function inverseOf(number: bigint, modulus: bigint) {
+export function inverseOf(number: bigint, modulus: bigint): bigint {
   const a = mod(number, modulus);
   const [gcd, x, y] = egcd(a, modulus);
 
@@ -78,7 +78,7 @@ export function inverseOf(number: bigint, modulus: bigint) {
   return mod(x, modulus);
 }
 
-export function int2Hex(number: bigint, prefix = true, pad = true) {
+export function int2Hex(number: bigint, prefix = true, pad = true): string {
   const padding = pad ? 32 : 1;
   const result = buf2hex(int2BytesBe(number, padding), false);
 
@@ -90,7 +90,7 @@ export function int2Hex(number: bigint, prefix = true, pad = true) {
 }
 
 // See: https://stackoverflow.com/a/40031979
-export function buf2hex(buffer: Uint8Array, prefix = true) {
+export function buf2hex(buffer: Uint8Array, prefix = true): string {
   const result = [...new Uint8Array(buffer)]
     .map((x) => x.toString(16).padStart(2, "0"))
     .join("");
@@ -103,12 +103,12 @@ export function buf2hex(buffer: Uint8Array, prefix = true) {
 }
 
 // See: https://stackoverflow.com/a/56943145
-export function int2BytesBe(int: bigint, padding = 32) {
+export function int2BytesBe(int: bigint, padding = 32): Uint8Array {
   return int2BytesLe(int, padding).reverse();
 }
 
 // See: https://stackoverflow.com/a/56943145
-export function int2BytesLe(int: bigint, padding = 32) {
+export function int2BytesLe(int: bigint, padding = 32): Uint8Array {
   const result = new Uint8Array(padding);
 
   let i = 0;

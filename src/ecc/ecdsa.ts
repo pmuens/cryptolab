@@ -46,7 +46,7 @@ export class ECDSA extends ECC {
   }
 }
 
-async function hashMessage(message: Uint8Array, n: bigint) {
+async function hashMessage(message: Uint8Array, n: bigint): Promise<bigint> {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-512", message));
   const msgNumber = BigInt(buf2hex(digest));
 

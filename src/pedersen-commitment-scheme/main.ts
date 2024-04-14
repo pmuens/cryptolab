@@ -2,7 +2,7 @@ import { Point } from "../ecc/point.ts";
 import { Secp256k1 } from "../ecc/curve.ts";
 import { getRandomNumber } from "../ecc/utils.ts";
 
-export function createCommitment(v: bigint) {
+export function createCommitment(v: bigint): { r: bigint; c: Point } {
   const r = getRandomNumber();
   const { G, H } = getCurveParams();
 
@@ -16,7 +16,7 @@ export function createCommitment(v: bigint) {
   };
 }
 
-export function verifyCommitment(v: bigint, r: bigint, c: Point) {
+export function verifyCommitment(v: bigint, r: bigint, c: Point): boolean {
   const { G, H } = getCurveParams();
 
   const c1 = G.scalarMul(v);
@@ -26,7 +26,7 @@ export function verifyCommitment(v: bigint, r: bigint, c: Point) {
   return c.x === cPrime.x && c.y === cPrime.y;
 }
 
-function getCurveParams() {
+function getCurveParams(): { G: Point; H: Point } {
   const curve = new Secp256k1();
   const G = new Point(curve, curve.gx, curve.gy);
 

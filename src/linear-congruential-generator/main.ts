@@ -13,7 +13,7 @@ export class LCG {
     this.m = BigInt(2 ** 64);
   }
 
-  rand() {
+  rand(): bigint {
     this.r = (this.a * this.r + this.c) % this.m;
     return this.r;
   }

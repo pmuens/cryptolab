@@ -15,7 +15,7 @@ export class Point {
   }
 
   // Identity / Point at infinity.
-  static infinity(curve: Curve) {
+  static infinity(curve: Curve): Point {
     return new Point(curve, 0n, 0n);
   }
 
