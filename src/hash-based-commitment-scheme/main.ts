@@ -1,5 +1,7 @@
 import { crypto } from "$std/crypto/mod.ts";
 
+import { buf2hex } from "../ecc/utils.ts";
+
 export async function createCommitment(v: number) {
   const r = getRandomNumber(0, 1_000_000_000);
   const digest = await createDigest(v, r);
@@ -13,7 +15,9 @@ export async function createCommitment(v: number) {
 
 export async function verifyCommitment(v: number, r: number, c: Uint8Array) {
   const digest = await createDigest(v, r);
-  return isEqual(c, new Uint8Array(digest));
+  const cPrime = new Uint8Array(digest);
+
+  return buf2hex(c) === buf2hex(cPrime);
 }
 
 function createDigest(v: number, r: number) {
@@ -25,13 +29,4 @@ function createDigest(v: number, r: number) {
 // See: https://stackoverflow.com/a/7228322
 function getRandomNumber(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1) + min);
-}
-
-// See: https://stackoverflow.com/q/76127214
-function isEqual(a: Uint8Array, b: Uint8Array) {
-  if (a.length !== b.length) {
-    return false;
-  }
-
-  return a.every((value, index) => value === b[index]);
 }
