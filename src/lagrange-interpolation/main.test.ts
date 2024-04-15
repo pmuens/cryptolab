@@ -22,6 +22,7 @@ describe("Lagrange Interpolation", () => {
     const e1 = evaluations[0];
     const e2 = evaluations[1];
 
+    expect(f(0)).toBe(1);
     expect(f(e1.x)).toBe(e1.y);
     expect(f(e2.x)).toBe(e2.y);
   });
@@ -35,6 +36,7 @@ describe("Lagrange Interpolation", () => {
     const e2 = evaluations[1];
     const e3 = evaluations[2];
 
+    expect(f(0)).toBe(3);
     expect(f(e1.x)).toBe(e1.y);
     expect(f(e2.x)).toBe(e2.y);
     expect(f(e3.x)).toBe(e3.y);
