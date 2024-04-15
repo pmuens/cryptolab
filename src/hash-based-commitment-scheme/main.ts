@@ -1,11 +1,11 @@
 import { crypto } from "$std/crypto/mod.ts";
 
-import { buf2hex } from "../ecc/utils.ts";
+import { buf2hex, getRandomNumber, int2BytesBe } from "../ecc/utils.ts";
 
 export async function createCommitment(
-  v: number,
-): Promise<{ r: number; c: Uint8Array }> {
-  const r = getRandomNumber(0, 1_000_000_000);
+  v: bigint,
+): Promise<{ r: bigint; c: Uint8Array }> {
+  const r = getRandomNumber();
   const digest = await createDigest(v, r);
   const c = new Uint8Array(digest);
 
@@ -16,8 +16,8 @@ export async function createCommitment(
 }
 
 export async function verifyCommitment(
-  v: number,
-  r: number,
+  v: bigint,
+  r: bigint,
   c: Uint8Array,
 ): Promise<boolean> {
   const digest = await createDigest(v, r);
@@ -26,13 +26,14 @@ export async function verifyCommitment(
   return buf2hex(c) === buf2hex(cPrime);
 }
 
-function createDigest(v: number, r: number): Promise<ArrayBuffer> {
-  const concat = [v, r];
-  const data = Uint8Array.from(concat);
-  return crypto.subtle.digest("SHA-256", data);
-}
+function createDigest(v: bigint, r: bigint): Promise<ArrayBuffer> {
+  const vBytes = int2BytesBe(v);
+  const rBytes = int2BytesBe(r);
 
-// See: https://stackoverflow.com/a/7228322
-export function getRandomNumber(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1) + min);
+  const data = new Uint8Array(vBytes.length + rBytes.length);
+
+  data.set(vBytes);
+  data.set(rBytes, vBytes.length);
+
+  return crypto.subtle.digest("SHA-256", data);
 }

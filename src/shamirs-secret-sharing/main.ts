@@ -1,45 +1,58 @@
-import { getRandomNumber } from "../hash-based-commitment-scheme/main.ts";
+import { getRandomNumber, mod } from "../ecc/utils.ts";
 import { Evaluation, interpolate } from "../lagrange-interpolation/main.ts";
 
-export function createEvaluations(
-  s: number,
-  t: number,
-  n: number,
-): Evaluation[] {
-  const f = createPolynomial(s, t);
+export class SSS {
+  t: bigint;
+  n: bigint;
+  modulus: bigint;
 
-  const evaluations = [];
-  for (let i = 1; i <= n; i++) {
-    const x = i;
-    const y = f(i);
-
-    evaluations.push({ x, y });
+  constructor(t: bigint, n: bigint, modulus: bigint) {
+    this.t = t;
+    this.n = n;
+    this.modulus = modulus;
   }
 
-  return evaluations;
+  createEvaluations(s: bigint): Evaluation[] {
+    const f = createPolynomial(s, this.t, this.modulus);
+
+    const evaluations = [];
+    for (let i = 1n; i <= this.n; i++) {
+      const x = i;
+      const y = f(i);
+
+      evaluations.push({ x, y });
+    }
+
+    return evaluations;
+  }
+
+  recoverSecret(evaluations: Evaluation[]): bigint {
+    const f = interpolate(evaluations, this.modulus);
+    return f(0n);
+  }
 }
 
-function createPolynomial(s: number, t: number): (x: number) => number {
-  const degree = t - 1;
+function createPolynomial(
+  s: bigint,
+  t: bigint,
+  modulus: bigint,
+): (x: bigint) => bigint {
+  const degree = t - 1n;
 
   const coefficients = [];
   for (let i = 0; i < degree; i++) {
-    coefficients.push(getRandomNumber(1, 1_000_000_000));
+    coefficients.push(getRandomNumber(32, modulus));
   }
 
   const polynomial = [s, ...coefficients];
 
-  function f(x: number): number {
+  function f(x: bigint): bigint {
     return polynomial.reduce(
-      (accum, coef, idx) => accum += coef * (x ** idx),
-      0,
+      (accum, coef, idx) =>
+        mod(accum + mod(coef * (x ** BigInt(idx)), modulus), modulus),
+      0n,
     );
   }
 
   return f;
-}
-
-export function recoverSecret(evaluations: Evaluation[]): number {
-  const f = interpolate(evaluations);
-  return f(0);
 }

@@ -1,13 +1,21 @@
 import { expect } from "$std/expect/mod.ts";
-import { describe, it } from "$std/testing/bdd.ts";
+import { beforeEach, describe, it } from "$std/testing/bdd.ts";
 
 import { interpolate } from "./main.ts";
+import { Secp256k1 } from "../ecc/curve.ts";
 
 describe("Lagrange Interpolation", () => {
-  it("should generate an interpolation polynomial of degree 0", () => {
-    const evaluations = [{ x: 1, y: 2 }];
+  let modulus: bigint;
 
-    const f = interpolate(evaluations);
+  beforeEach(() => {
+    const curve = new Secp256k1();
+    modulus = curve.n;
+  });
+
+  it("should generate an interpolation polynomial of degree 0", () => {
+    const evaluations = [{ x: 1n, y: 2n }];
+
+    const f = interpolate(evaluations, modulus);
 
     const e1 = evaluations[0];
 
@@ -15,28 +23,28 @@ describe("Lagrange Interpolation", () => {
   });
 
   it("should generate an interpolation polynomial of degree 1", () => {
-    const evaluations = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
+    const evaluations = [{ x: 1n, y: 2n }, { x: 3n, y: 4n }];
 
-    const f = interpolate(evaluations);
+    const f = interpolate(evaluations, modulus);
 
     const e1 = evaluations[0];
     const e2 = evaluations[1];
 
-    expect(f(0)).toBe(1);
+    expect(f(0n)).toBe(1n);
     expect(f(e1.x)).toBe(e1.y);
     expect(f(e2.x)).toBe(e2.y);
   });
 
   it("should generate an interpolation polynomial of degree 2", () => {
-    const evaluations = [{ x: 1, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 6 }];
+    const evaluations = [{ x: 1n, y: 2n }, { x: 2n, y: 3n }, { x: 3n, y: 6n }];
 
-    const f = interpolate(evaluations);
+    const f = interpolate(evaluations, modulus);
 
     const e1 = evaluations[0];
     const e2 = evaluations[1];
     const e3 = evaluations[2];
 
-    expect(f(0)).toBe(3);
+    expect(f(0n)).toBe(3n);
     expect(f(e1.x)).toBe(e1.y);
     expect(f(e2.x)).toBe(e2.y);
     expect(f(e3.x)).toBe(e3.y);

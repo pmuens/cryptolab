@@ -5,7 +5,7 @@ import { createCommitment, verifyCommitment } from "./main.ts";
 
 describe("Hash-Based Commitment Scheme", () => {
   it("should verify a valid commitment", async () => {
-    const v = 42;
+    const v = 42n;
     const { c, r } = await createCommitment(v);
 
     const isValid = await verifyCommitment(v, r, c);
@@ -14,7 +14,7 @@ describe("Hash-Based Commitment Scheme", () => {
   });
 
   it("shouldn't verify an invalid commitment", async () => {
-    const v = 42;
+    const v = 42n;
     const c = new Uint8Array([1, 2, 3, 4, 5]);
     const { r } = await createCommitment(v);
 
