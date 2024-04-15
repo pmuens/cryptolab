@@ -13,12 +13,14 @@ export class SSS {
   }
 
   createEvaluations(s: bigint): Evaluation[] {
-    const f = createPolynomial(s, this.t, this.modulus);
+    const degree = this.t - 1n;
+    const polynomial = new Polynomial(degree, this.modulus);
+    polynomial.coefficients[0] = s;
 
     const evaluations = [];
     for (let i = 1n; i <= this.n; i++) {
       const x = i;
-      const y = f(i);
+      const y = polynomial.evaluate(i);
 
       evaluations.push({ x, y });
     }
@@ -32,27 +34,26 @@ export class SSS {
   }
 }
 
-function createPolynomial(
-  s: bigint,
-  t: bigint,
-  modulus: bigint,
-): (x: bigint) => bigint {
-  const degree = t - 1n;
+class Polynomial {
+  degree: bigint;
+  modulus: bigint;
+  // Ordered by increasing degree.
+  coefficients: bigint[] = [];
 
-  const coefficients = [];
-  for (let i = 0; i < degree; i++) {
-    coefficients.push(getRandomNumber(32, modulus));
+  constructor(degree: bigint, modulus: bigint) {
+    this.degree = degree;
+    this.modulus = modulus;
+
+    for (let i = 0; i <= degree; i++) {
+      this.coefficients.push(getRandomNumber(32, modulus));
+    }
   }
 
-  const polynomial = [s, ...coefficients];
-
-  function f(x: bigint): bigint {
-    return polynomial.reduce(
+  evaluate(x: bigint): bigint {
+    return this.coefficients.reduce(
       (accum, coef, idx) =>
-        mod(accum + mod(coef * (x ** BigInt(idx)), modulus), modulus),
+        mod(accum + mod(coef * (x ** BigInt(idx)), this.modulus), this.modulus),
       0n,
     );
   }
-
-  return f;
 }
