@@ -33,6 +33,6 @@ function createDigest(v: number, r: number): Promise<ArrayBuffer> {
 }
 
 // See: https://stackoverflow.com/a/7228322
-function getRandomNumber(min: number, max: number): number {
+export function getRandomNumber(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1) + min);
 }

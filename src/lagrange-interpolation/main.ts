@@ -28,4 +28,4 @@ export function interpolate(evaluations: Evaluation[]): (x: number) => number {
   return f;
 }
 
-type Evaluation = { x: number; y: number };
+export type Evaluation = { x: number; y: number };
