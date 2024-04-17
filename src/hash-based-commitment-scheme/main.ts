@@ -1,39 +1,47 @@
-import { crypto } from "$std/crypto/mod.ts";
+import { crypto, DigestAlgorithm } from "$std/crypto/mod.ts";
 
 import { buf2hex, getRandomNumber, int2BytesBe } from "../ecc/utils.ts";
 
-export async function createCommitment(
-  v: bigint,
-): Promise<{ r: bigint; c: Uint8Array }> {
-  const r = getRandomNumber();
-  const digest = await createDigest(v, r);
-  const c = new Uint8Array(digest);
+export class HashCommitment {
+  algo: DigestAlgorithm;
 
-  return {
-    r,
-    c,
-  };
-}
+  constructor(algo: DigestAlgorithm = "SHA-256") {
+    this.algo = algo;
+  }
 
-export async function verifyCommitment(
-  v: bigint,
-  r: bigint,
-  c: Uint8Array,
-): Promise<boolean> {
-  const digest = await createDigest(v, r);
-  const cPrime = new Uint8Array(digest);
+  async create(
+    v: bigint,
+  ): Promise<{ r: bigint; c: Uint8Array }> {
+    const r = getRandomNumber();
+    const digest = await this.createDigest(v, r);
+    const c = new Uint8Array(digest);
 
-  return buf2hex(c) === buf2hex(cPrime);
-}
+    return {
+      r,
+      c,
+    };
+  }
 
-function createDigest(v: bigint, r: bigint): Promise<ArrayBuffer> {
-  const vBytes = int2BytesBe(v);
-  const rBytes = int2BytesBe(r);
+  async verify(
+    v: bigint,
+    r: bigint,
+    c: Uint8Array,
+  ): Promise<boolean> {
+    const digest = await this.createDigest(v, r);
+    const cPrime = new Uint8Array(digest);
 
-  const data = new Uint8Array(vBytes.length + rBytes.length);
+    return buf2hex(c) === buf2hex(cPrime);
+  }
 
-  data.set(vBytes);
-  data.set(rBytes, vBytes.length);
+  private createDigest(v: bigint, r: bigint): Promise<ArrayBuffer> {
+    const vBytes = int2BytesBe(v);
+    const rBytes = int2BytesBe(r);
 
-  return crypto.subtle.digest("SHA-256", data);
+    const data = new Uint8Array(vBytes.length + rBytes.length);
+
+    data.set(vBytes);
+    data.set(rBytes, vBytes.length);
+
+    return crypto.subtle.digest(this.algo, data);
+  }
 }

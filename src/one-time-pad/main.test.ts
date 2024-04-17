@@ -1,36 +1,42 @@
 import { expect } from "$std/expect/mod.ts";
 import { describe, it } from "$std/testing/bdd.ts";
 
-import { decrypt, encrypt } from "./main.ts";
+import { OTP } from "./main.ts";
 
 describe("One-Time-Pad", () => {
   it("should encrypt and decrypt", () => {
-    const key = 0b1011;
-    const message = 0b1010;
+    const key = 0b1011n;
+    const message = 0b1010n;
 
-    const ciphertext = encrypt(key, message);
-    const plaintext = decrypt(key, ciphertext);
+    const otp = new OTP(key);
+
+    const ciphertext = otp.encrypt(message);
+    const plaintext = otp.decrypt(ciphertext);
 
     expect(plaintext).toBe(message);
   });
 
   it("should demonstrate key extraction via CPA", () => {
-    const key = 0b1011;
-    const message = 0b1010;
+    const key = 0b1011n;
+    const message = 0b1010n;
 
-    const ciphertext = encrypt(key, message);
+    const otp = new OTP(key);
+
+    const ciphertext = otp.encrypt(message);
     const keyRecovered = ciphertext ^ message;
 
     expect(keyRecovered).toBe(key);
   });
 
   it("should demonstrate XORed plaintexts", () => {
-    const key = 0b1011;
-    const messageOne = 0b1010;
-    const messageTwo = 0b1101;
+    const key = 0b1011n;
+    const messageOne = 0b1010n;
+    const messageTwo = 0b1101n;
 
-    const ciphertextOne = encrypt(key, messageOne);
-    const ciphertextTwo = encrypt(key, messageTwo);
+    const otp = new OTP(key);
+
+    const ciphertextOne = otp.encrypt(messageOne);
+    const ciphertextTwo = otp.encrypt(messageTwo);
     const xoredPlaintexts = ciphertextOne ^ ciphertextTwo;
 
     expect(xoredPlaintexts).toBe(messageOne ^ messageTwo);

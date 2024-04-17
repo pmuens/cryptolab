@@ -1,15 +1,17 @@
 import { getRandomNumber, mod } from "../ecc/utils.ts";
-import { Evaluation, interpolate } from "../lagrange-interpolation/main.ts";
+import { Evaluation, Lagrange } from "../lagrange-interpolation/main.ts";
 
 export class SSS {
   t: bigint;
   n: bigint;
   modulus: bigint;
+  lagrange: Lagrange;
 
   constructor(t: bigint, n: bigint, modulus: bigint) {
     this.t = t;
     this.n = n;
     this.modulus = modulus;
+    this.lagrange = new Lagrange(modulus);
   }
 
   createEvaluations(s: bigint): Evaluation[] {
@@ -29,7 +31,7 @@ export class SSS {
   }
 
   recoverSecret(evaluations: Evaluation[]): bigint {
-    const f = interpolate(evaluations, this.modulus);
+    const f = this.lagrange.interpolate(evaluations);
     return f(0n);
   }
 }

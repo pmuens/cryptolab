@@ -1,3 +1,47 @@
+export class CaesarCipher {
+  key: number;
+
+  constructor(key: number) {
+    this.key = key;
+  }
+
+  encrypt(plaintext: string): string {
+    const plaintextArray = [...plaintext.toLocaleLowerCase()];
+
+    const plaintextIndexed = plaintextArray.map((char) =>
+      ALPHABET.indexOf(char)
+    );
+    const ciphertextIndexed = plaintextIndexed.map(
+      (idx) => (idx + this.key) % ALPHABET.length,
+    );
+
+    const ciphertext = ciphertextIndexed.reduce(
+      (result, index) => (result += ALPHABET[index]),
+      "",
+    );
+
+    return ciphertext;
+  }
+
+  decrypt(ciphertext: string): string {
+    const ciphertextArray = [...ciphertext];
+
+    const ciphertextIndexed = ciphertextArray.map((char) =>
+      ALPHABET.indexOf(char)
+    );
+    const plaintextIndexed = ciphertextIndexed.map(
+      (idx) => (idx - this.key) % ALPHABET.length,
+    );
+
+    const plaintext = plaintextIndexed.reduce(
+      (result, index) => (result += ALPHABET[index]),
+      "",
+    );
+
+    return plaintext;
+  }
+}
+
 const ALPHABET = [
   "a",
   "b",
@@ -26,37 +70,3 @@ const ALPHABET = [
   "y",
   "z",
 ];
-
-export function encrypt(key: number, plaintext: string): string {
-  const plaintextArray = [...plaintext.toLocaleLowerCase()];
-
-  const plaintextIndexed = plaintextArray.map((char) => ALPHABET.indexOf(char));
-  const ciphertextIndexed = plaintextIndexed.map(
-    (idx) => (idx + key) % ALPHABET.length,
-  );
-
-  const ciphertext = ciphertextIndexed.reduce(
-    (result, index) => (result += ALPHABET[index]),
-    "",
-  );
-
-  return ciphertext;
-}
-
-export function decrypt(key: number, ciphertext: string): string {
-  const ciphertextArray = [...ciphertext];
-
-  const ciphertextIndexed = ciphertextArray.map((char) =>
-    ALPHABET.indexOf(char)
-  );
-  const plaintextIndexed = ciphertextIndexed.map(
-    (idx) => (idx - key) % ALPHABET.length,
-  );
-
-  const plaintext = plaintextIndexed.reduce(
-    (result, index) => (result += ALPHABET[index]),
-    "",
-  );
-
-  return plaintext;
-}

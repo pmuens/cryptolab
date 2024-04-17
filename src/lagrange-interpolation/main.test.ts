@@ -1,7 +1,7 @@
 import { expect } from "$std/expect/mod.ts";
 import { beforeEach, describe, it } from "$std/testing/bdd.ts";
 
-import { interpolate } from "./main.ts";
+import { Lagrange } from "./main.ts";
 import { Secp256k1 } from "../ecc/curve.ts";
 
 describe("Lagrange Interpolation", () => {
@@ -15,7 +15,8 @@ describe("Lagrange Interpolation", () => {
   it("should generate an interpolation polynomial of degree 0", () => {
     const evaluations = [{ x: 1n, y: 2n }];
 
-    const f = interpolate(evaluations, modulus);
+    const lagrange = new Lagrange(modulus);
+    const f = lagrange.interpolate(evaluations);
 
     const e1 = evaluations[0];
 
@@ -25,7 +26,8 @@ describe("Lagrange Interpolation", () => {
   it("should generate an interpolation polynomial of degree 1", () => {
     const evaluations = [{ x: 1n, y: 2n }, { x: 3n, y: 4n }];
 
-    const f = interpolate(evaluations, modulus);
+    const lagrange = new Lagrange(modulus);
+    const f = lagrange.interpolate(evaluations);
 
     const e1 = evaluations[0];
     const e2 = evaluations[1];
@@ -38,7 +40,8 @@ describe("Lagrange Interpolation", () => {
   it("should generate an interpolation polynomial of degree 2", () => {
     const evaluations = [{ x: 1n, y: 2n }, { x: 2n, y: 3n }, { x: 3n, y: 6n }];
 
-    const f = interpolate(evaluations, modulus);
+    const lagrange = new Lagrange(modulus);
+    const f = lagrange.interpolate(evaluations);
 
     const e1 = evaluations[0];
     const e2 = evaluations[1];

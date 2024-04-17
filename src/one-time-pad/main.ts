@@ -1,40 +1,48 @@
-export function encrypt(key: number, plaintext: number): number {
-  if (!meetsLengthRequirement(key, plaintext)) {
-    throw new Error(
-      "For the One-Time-Pad to be secure the key and the ciphertext need to have the same length...",
-    );
+export class OTP {
+  key: bigint;
+
+  constructor(key: bigint) {
+    this.key = key;
   }
 
-  const ciphertext = key ^ plaintext;
-  return ciphertext;
-}
+  encrypt(plaintext: bigint): bigint {
+    if (!this.meetsLengthRequirement(plaintext)) {
+      throw new Error(
+        "For the One-Time-Pad to be secure the key and the ciphertext need to have the same length...",
+      );
+    }
 
-export function decrypt(key: number, ciphertext: number): number {
-  if (!meetsLengthRequirement(key, ciphertext)) {
-    throw new Error(
-      "For the One-Time-Pad to be secure the key and the ciphertext need to have the same length...",
-    );
+    return this.key ^ plaintext;
   }
 
-  const plaintext = key ^ ciphertext;
-  return plaintext;
-}
+  decrypt(ciphertext: bigint): bigint {
+    if (!this.meetsLengthRequirement(ciphertext)) {
+      throw new Error(
+        "For the One-Time-Pad to be secure the key and the ciphertext need to have the same length...",
+      );
+    }
 
-function meetsLengthRequirement(key: number, text: number): boolean {
-  // Get number of desired bits.
-  //  Can be taken form key or plaintext as both have the same length.
-  const binaryLength = key.toString(2).length;
-
-  const keyBinaryString = toBinaryString(binaryLength, text);
-  const textBinaryString = toBinaryString(binaryLength, text);
-
-  if (keyBinaryString.length !== textBinaryString.length) {
-    return false;
+    return this.key ^ ciphertext;
   }
-  return true;
+
+  private meetsLengthRequirement(text: bigint): boolean {
+    // Get number of desired bits.
+    //  Can be taken form key or plaintext as both have the same length.
+    const binaryLength = this.key.toString(2).length;
+
+    const keyBinaryString = toBinaryString(binaryLength, text);
+    const textBinaryString = toBinaryString(binaryLength, text);
+
+    if (keyBinaryString.length !== textBinaryString.length) {
+      return false;
+    }
+    return true;
+  }
 }
 
-function toBinaryString(binaryLength: number, text: number): string {
-  const binaryResult = text.toString(2); // Turn into a binary string.
-  return binaryResult.padStart(binaryLength, "0"); // Add padding in front (if necessary).
+function toBinaryString(binaryLength: number, text: bigint): string {
+  // Turn into a binary string.
+  const binaryResult = text.toString(2);
+  // Add padding in front (if necessary).
+  return binaryResult.padStart(binaryLength, "0");
 }
