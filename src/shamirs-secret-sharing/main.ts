@@ -2,12 +2,12 @@ import { getRandomNumber, mod } from "../ecc/utils.ts";
 import { Evaluation, Lagrange } from "../lagrange-interpolation/main.ts";
 
 export class SSS {
-  t: bigint;
-  n: bigint;
+  t: number;
+  n: number;
   modulus: bigint;
   lagrange: Lagrange;
 
-  constructor(t: bigint, n: bigint, modulus: bigint) {
+  constructor(t: number, n: number, modulus: bigint) {
     this.t = t;
     this.n = n;
     this.modulus = modulus;
@@ -15,7 +15,7 @@ export class SSS {
   }
 
   createEvaluations(s: bigint): Evaluation[] {
-    const degree = this.t - 1n;
+    const degree = this.t - 1;
     const polynomial = new Polynomial(degree, this.modulus);
     polynomial.coefficients[0] = s;
 
@@ -37,12 +37,12 @@ export class SSS {
 }
 
 class Polynomial {
-  degree: bigint;
+  degree: number;
   modulus: bigint;
   // Ordered by increasing degree.
   coefficients: bigint[] = [];
 
-  constructor(degree: bigint, modulus: bigint) {
+  constructor(degree: number, modulus: bigint) {
     this.degree = degree;
     this.modulus = modulus;
 

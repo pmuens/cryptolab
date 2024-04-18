@@ -16,15 +16,15 @@ describe("Schamir's Secret Sharing", () => {
     const s = 42n;
 
     // 3 / 5 Scheme.
-    const t = 3n;
-    const n = 5n;
+    const t = 3;
+    const n = 5;
 
     const shamir = new SSS(t, n, modulus);
 
     const evaluations = shamir.createEvaluations(s);
 
     // Using three evaluations should meet the threshold (3 / 5).
-    const sPrime = shamir.recoverSecret(evaluations.slice(0, 3));
+    const sPrime = shamir.recoverSecret(evaluations.slice(0, t));
 
     expect(sPrime).toBe(s);
   });
@@ -33,15 +33,15 @@ describe("Schamir's Secret Sharing", () => {
     const s = 42n;
 
     // 3 / 5 Scheme.
-    const t = 3n;
-    const n = 5n;
+    const t = 3;
+    const n = 5;
 
     const shamir = new SSS(t, n, modulus);
 
     const evaluations = shamir.createEvaluations(s);
 
     // Using all evaluations should meet the threshold (3 / 5).
-    const sPrime = shamir.recoverSecret(evaluations);
+    const sPrime = shamir.recoverSecret(evaluations.slice(0, n));
 
     expect(sPrime).toBe(s);
   });
@@ -50,15 +50,15 @@ describe("Schamir's Secret Sharing", () => {
     const s = 42n;
 
     // 4 / 6 Scheme.
-    const t = 4n;
-    const n = 6n;
+    const t = 4;
+    const n = 6;
 
     const shamir = new SSS(t, n, modulus);
 
     const evaluations = shamir.createEvaluations(s);
 
     // Using three evaluations should not meet the threshold (4 / 6).
-    const sPrime = shamir.recoverSecret(evaluations.slice(0, 3));
+    const sPrime = shamir.recoverSecret(evaluations.slice(0, t - 1));
 
     expect(sPrime).not.toBe(s);
   });
