@@ -36,7 +36,7 @@ export class SSS {
   }
 }
 
-class Polynomial {
+export class Polynomial {
   degree: number;
   modulus: bigint;
   // Ordered by increasing degree.

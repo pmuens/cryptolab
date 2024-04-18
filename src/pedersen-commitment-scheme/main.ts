@@ -15,9 +15,7 @@ export class PedersenCommitment {
     this.H = this.G.scalarMul(x);
   }
 
-  create(v: bigint): { r: bigint; c: Point } {
-    const r = getRandomNumber();
-
+  create(v: bigint, r = getRandomNumber()): { r: bigint; c: Point } {
     const c1 = this.G.scalarMul(v);
     const c2 = this.H.scalarMul(r);
     const c = c1.add(c2);
