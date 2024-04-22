@@ -1,5 +1,5 @@
-import { getRandomNumber, mod } from "../ecc/utils.ts";
-import { Evaluation, Lagrange } from "../lagrange-interpolation/main.ts";
+import { Lagrange } from "../lagrange-interpolation/main.ts";
+import { Evaluation, Polynomial } from "../shared/polynomial.ts";
 
 export class SSS {
   t: number;
@@ -33,29 +33,5 @@ export class SSS {
   recoverSecret(evaluations: Evaluation[]): bigint {
     const f = this.lagrange.interpolate(evaluations);
     return f(0n);
-  }
-}
-
-export class Polynomial {
-  degree: number;
-  modulus: bigint;
-  // Ordered by increasing degree.
-  coefficients: bigint[] = [];
-
-  constructor(degree: number, modulus: bigint) {
-    this.degree = degree;
-    this.modulus = modulus;
-
-    for (let i = 0; i <= degree; i++) {
-      this.coefficients.push(getRandomNumber(32, modulus));
-    }
-  }
-
-  evaluate(x: bigint): bigint {
-    return this.coefficients.reduce(
-      (accum, coef, idx) =>
-        mod(accum + mod(coef * (x ** BigInt(idx)), this.modulus), this.modulus),
-      0n,
-    );
   }
 }

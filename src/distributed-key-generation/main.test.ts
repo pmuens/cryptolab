@@ -2,9 +2,9 @@ import { expect } from "$std/expect/mod.ts";
 import { beforeEach, describe, it } from "$std/testing/bdd.ts";
 
 import { DKG } from "./main.ts";
-import { mod } from "../ecc/utils.ts";
-import { Point } from "../ecc/point.ts";
-import { Secp256k1 } from "../ecc/curve.ts";
+import { mod } from "../shared/utils.ts";
+import { Point } from "../shared/ecc/point.ts";
+import { Secp256k1 } from "../shared/ecc/curve.ts";
 import { Lagrange } from "../lagrange-interpolation/main.ts";
 
 describe("Distributed Key Generation", () => {

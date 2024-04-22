@@ -1,7 +1,6 @@
-import { mod } from "../ecc/utils.ts";
-import { Point } from "../ecc/point.ts";
-import { Evaluation } from "../lagrange-interpolation/main.ts";
-import { Polynomial } from "../shamirs-secret-sharing/main.ts";
+import { mod } from "../shared/utils.ts";
+import { Point } from "../shared/ecc/point.ts";
+import { Evaluation, Polynomial } from "../shared/polynomial.ts";
 import { PedersenCommitment } from "../pedersen-commitment-scheme/main.ts";
 
 export class DKG {

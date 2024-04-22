@@ -1,9 +1,9 @@
 import { expect } from "$std/expect/mod.ts";
 import { describe, it } from "$std/testing/bdd.ts";
 
-import { Point } from "../ecc/point.ts";
-import { Secp256k1 } from "../ecc/curve.ts";
 import { PedersenCommitment } from "./main.ts";
+import { Point } from "../shared/ecc/point.ts";
+import { Secp256k1 } from "../shared/ecc/curve.ts";
 
 describe("Pedersen Commitment Scheme", () => {
   it("should verify a valid commitment", () => {

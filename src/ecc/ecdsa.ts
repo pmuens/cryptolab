@@ -2,9 +2,9 @@ import { assert } from "$std/assert/mod.ts";
 import { crypto } from "$std/crypto/mod.ts";
 
 import { ECC } from "./ecc.ts";
-import { Point } from "./point.ts";
+import { Point } from "../shared/ecc/point.ts";
 import { PublicKey, Signature } from "./types.ts";
-import { buf2hex, getRandomNumber, inverseOf, mod } from "./utils.ts";
+import { buf2hex, getRandomNumber, inverseOf, mod } from "../shared/utils.ts";
 
 export class ECDSA extends ECC {
   async sign(message: Uint8Array): Promise<Signature> {

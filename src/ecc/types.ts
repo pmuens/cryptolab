@@ -1,4 +1,4 @@
-import { Point } from "./point.ts";
+import { Point } from "../shared/ecc/point.ts";
 
 export type PrivateKey = bigint;
 

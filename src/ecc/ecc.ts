@@ -1,7 +1,7 @@
-import { Point } from "./point.ts";
 import { PrivateKey } from "./types.ts";
-import { getRandomNumber } from "./utils.ts";
-import { Curve, Secp256k1 } from "./curve.ts";
+import { Point } from "../shared/ecc/point.ts";
+import { getRandomNumber } from "../shared/utils.ts";
+import { Curve, Secp256k1 } from "../shared/ecc/curve.ts";
 
 export class ECC {
   readonly sk: bigint;

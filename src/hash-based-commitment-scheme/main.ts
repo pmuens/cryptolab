@@ -1,6 +1,6 @@
 import { crypto, DigestAlgorithm } from "$std/crypto/mod.ts";
 
-import { buf2hex, getRandomNumber, int2BytesBe } from "../ecc/utils.ts";
+import { buf2hex, getRandomNumber, int2BytesBe } from "../shared/utils.ts";
 
 export class HashCommitment {
   algo: DigestAlgorithm;

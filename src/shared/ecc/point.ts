@@ -1,7 +1,7 @@
 import { assert } from "$std/assert/mod.ts";
 
 import { Curve } from "./curve.ts";
-import { inverseOf, mod, toBinary } from "./utils.ts";
+import { inverseOf, mod, toBinary } from "../utils.ts";
 
 export class Point {
   x: bigint;

@@ -1,4 +1,5 @@
-import { inverseOf, mod } from "../ecc/utils.ts";
+import { inverseOf, mod } from "../shared/utils.ts";
+import { Evaluation } from "../shared/polynomial.ts";
 
 export class Lagrange {
   modulus: bigint;
@@ -48,5 +49,3 @@ export class Lagrange {
     return f;
   }
 }
-
-export type Evaluation = { x: bigint; y: bigint };

@@ -1,6 +1,6 @@
-import { Point } from "../ecc/point.ts";
-import { Secp256k1 } from "../ecc/curve.ts";
-import { getRandomNumber } from "../ecc/utils.ts";
+import { Point } from "../shared/ecc/point.ts";
+import { Secp256k1 } from "../shared/ecc/curve.ts";
+import { getRandomNumber } from "../shared/utils.ts";
 
 export class PedersenCommitment {
   H: Point;

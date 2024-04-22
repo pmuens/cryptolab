@@ -2,7 +2,7 @@ import { expect } from "$std/expect/mod.ts";
 import { beforeEach, describe, it } from "$std/testing/bdd.ts";
 
 import { Lagrange } from "./main.ts";
-import { Secp256k1 } from "../ecc/curve.ts";
+import { Secp256k1 } from "../shared/ecc/curve.ts";
 
 describe("Lagrange Interpolation", () => {
   let modulus: bigint;
