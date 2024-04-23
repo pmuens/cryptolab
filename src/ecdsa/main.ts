@@ -1,9 +1,9 @@
 import { assert } from "$std/assert/mod.ts";
 import { crypto } from "$std/crypto/mod.ts";
 
-import { ECC } from "./ecc.ts";
+import { ECC } from "../shared/ecc/ecc.ts";
 import { Point } from "../shared/ecc/point.ts";
-import { PublicKey, Signature } from "./types.ts";
+import { PublicKey } from "../shared/ecc/types.ts";
 import { buf2hex, getRandomNumber, inverseOf, mod } from "../shared/utils.ts";
 
 export class ECDSA extends ECC {
@@ -62,3 +62,8 @@ async function hashMessage(message: Uint8Array, n: bigint): Promise<bigint> {
 
   return z;
 }
+
+type Signature = {
+  r: bigint;
+  s: bigint;
+};

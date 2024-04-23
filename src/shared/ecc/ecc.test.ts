@@ -2,7 +2,7 @@ import { expect } from "$std/expect/mod.ts";
 import { describe, it } from "$std/testing/bdd.ts";
 
 import { ECC } from "./ecc.ts";
-import { int2Hex } from "./utils.ts";
+import { int2Hex } from "../utils.ts";
 
 describe("ECC", () => {
   it("should generate a public key based on a known private key", () => {

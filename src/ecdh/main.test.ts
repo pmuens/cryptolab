@@ -1,8 +1,8 @@
 import { expect } from "$std/expect/mod.ts";
 import { describe, it } from "$std/testing/bdd.ts";
 
-import { ECDH } from "./ecdh.ts";
-import { int2Hex } from "./utils.ts";
+import { ECDH } from "./main.ts";
+import { int2Hex } from "../shared/utils.ts";
 
 describe("ECDH", () => {
   // See: https://andrea.corbellini.name/2015/05/30/elliptic-curve-cryptography-ecdh-and-ecdsa#playing-with-ecdh

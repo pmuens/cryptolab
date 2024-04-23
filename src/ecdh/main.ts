@@ -1,5 +1,5 @@
-import { ECC } from "./ecc.ts";
-import { PublicKey, SharedSecret } from "./types.ts";
+import { ECC } from "../shared/ecc/ecc.ts";
+import { PublicKey, SharedSecret } from "../shared/ecc/types.ts";
 
 export class ECDH extends ECC {
   deriveSecret(pk: PublicKey): SharedSecret {

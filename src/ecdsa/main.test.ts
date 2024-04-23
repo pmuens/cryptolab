@@ -1,7 +1,7 @@
 import { expect } from "$std/expect/mod.ts";
 import { describe, it } from "$std/testing/bdd.ts";
 
-import { ECDSA } from "./ecdsa.ts";
+import { ECDSA } from "./main.ts";
 
 describe("ECDSA", () => {
   // See: https://andrea.corbellini.name/2015/05/30/elliptic-curve-cryptography-ecdh-and-ecdsa#playing-with-ecdsa
