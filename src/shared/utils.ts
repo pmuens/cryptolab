@@ -121,3 +121,24 @@ export function int2Hex(number: bigint, prefix = true, pad = true): string {
 
   return result;
 }
+
+// See: https://stackoverflow.com/a/49129872
+export function concat(...items: (bigint | Uint8Array)[]): Uint8Array {
+  const arrays = items.map((x) => {
+    if (typeof x === "bigint") {
+      return int2BytesBe(x);
+    }
+    return x;
+  });
+  const length = arrays.reduce((accum, x) => accum += x.length, 0);
+
+  const data = new Uint8Array(length);
+
+  let offset = 0;
+  arrays.forEach((x) => {
+    data.set(x, offset);
+    offset += x.length;
+  });
+
+  return data;
+}

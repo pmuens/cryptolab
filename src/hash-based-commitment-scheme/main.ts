@@ -1,6 +1,6 @@
 import { crypto, DigestAlgorithm } from "$std/crypto/mod.ts";
 
-import { buf2hex, getRandomNumber, int2BytesBe } from "../shared/utils.ts";
+import { buf2hex, concat, getRandomNumber } from "../shared/utils.ts";
 
 export class HashCommitment {
   algo: DigestAlgorithm;
@@ -34,14 +34,7 @@ export class HashCommitment {
   }
 
   private createDigest(v: bigint, r: bigint): Promise<ArrayBuffer> {
-    const vBytes = int2BytesBe(v);
-    const rBytes = int2BytesBe(r);
-
-    const data = new Uint8Array(vBytes.length + rBytes.length);
-
-    data.set(vBytes);
-    data.set(rBytes, vBytes.length);
-
+    const data = concat(v, r);
     return crypto.subtle.digest(this.algo, data);
   }
 }
