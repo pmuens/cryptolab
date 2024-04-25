@@ -4,9 +4,9 @@ import { getRandomNumber } from "../utils.ts";
 import { Curve, Secp256k1 } from "./curve.ts";
 
 export class ECC {
-  readonly sk: bigint;
-  readonly pk: Point;
-  readonly curve: Curve;
+  sk: bigint;
+  pk: Point;
+  curve: Curve;
 
   constructor(sk?: PrivateKey, curve?: Curve) {
     this.curve = new Secp256k1();
