@@ -40,7 +40,7 @@ describe("ECDSA", () => {
     expect(isValid).toBe(true);
   });
 
-  it("should generate a signature when the private key is randomized", async () => {
+  it("should generate a valid signature when the private key is randomized", async () => {
     const ecdsa = new ECDSA();
     const publicKey = ecdsa.pk;
 
