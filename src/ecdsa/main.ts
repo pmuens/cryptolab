@@ -1,10 +1,7 @@
-import { assert } from "$std/assert/mod.ts";
-import { crypto } from "$std/crypto/mod.ts";
-
 import { ECC } from "../shared/ecc/ecc.ts";
 import { Point } from "../shared/ecc/point.ts";
 import { PrivateKey, PublicKey } from "../shared/ecc/types.ts";
-import { buf2hex, getRandomNumber, inverseOf, mod } from "../shared/utils.ts";
+import { getRandomNumber, inverseOf, mod } from "../shared/utils.ts";
 
 export class ECDSA extends ECC {
   G: Point;
@@ -15,7 +12,7 @@ export class ECDSA extends ECC {
   }
 
   async sign(message: Uint8Array): Promise<Signature> {
-    const z = await hashMessage(message, this.curve.n);
+    const z = await this.curve.bytes2Scalar(message);
 
     let r = 0n;
     let s = 0n;
@@ -37,7 +34,7 @@ export class ECDSA extends ECC {
     message: Uint8Array,
     signature: Signature,
   ): Promise<boolean> {
-    const z = await hashMessage(message, this.curve.n);
+    const z = await this.curve.bytes2Scalar(message);
 
     const u = mod(z * inverseOf(signature.s, this.curve.n), this.curve.n);
     const v = mod(
@@ -49,23 +46,6 @@ export class ECDSA extends ECC {
 
     return mod(signature.r, this.curve.n) === mod(R.x, this.curve.n);
   }
-}
-
-async function hashMessage(message: Uint8Array, n: bigint): Promise<bigint> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-512", message));
-  const msgNumber = BigInt(buf2hex(digest));
-
-  // See: https://stackoverflow.com/q/54758130
-  const nBits = BigInt(n.toString(2).length);
-  const msgNumberBits = BigInt(msgNumber.toString(2).length);
-
-  // Truncate hash to make it FIPS 180 compatible.
-  const z = msgNumber >> (msgNumberBits - nBits);
-
-  const zBits = BigInt(z.toString(2).length);
-  assert(zBits <= nBits);
-
-  return z;
 }
 
 type Signature = {

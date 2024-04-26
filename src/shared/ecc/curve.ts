@@ -1,3 +1,9 @@
+import { assert } from "$std/assert/mod.ts";
+import { crypto } from "$std/crypto/mod.ts";
+import { DigestAlgorithm } from "$std/crypto/crypto.ts";
+
+import { buf2hex } from "../utils.ts";
+
 export class Curve {
   name: string;
   p: bigint;
@@ -26,6 +32,26 @@ export class Curve {
     this.gy = gy;
     this.n = n;
     this.h = h;
+  }
+
+  async bytes2Scalar(
+    bytes: Uint8Array,
+    algo: DigestAlgorithm = "SHA-512",
+  ): Promise<bigint> {
+    const digest = new Uint8Array(await crypto.subtle.digest(algo, bytes));
+    const bytesNumber = BigInt(buf2hex(digest));
+
+    // See: https://stackoverflow.com/q/54758130
+    const nBits = BigInt(this.n.toString(2).length);
+    const bytesNumberBits = BigInt(bytesNumber.toString(2).length);
+
+    // Truncate hash to make it FIPS 180 compatible.
+    const x = bytesNumber >> (bytesNumberBits - nBits);
+
+    const xBits = BigInt(x.toString(2).length);
+    assert(xBits <= nBits);
+
+    return x;
   }
 }
 
