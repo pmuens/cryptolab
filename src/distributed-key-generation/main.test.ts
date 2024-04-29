@@ -9,22 +9,18 @@ import { Lagrange } from "../lagrange-interpolation/main.ts";
 
 describe("Distributed Key Generation", () => {
   let curve: Secp256k1;
-  let modulus: bigint;
 
   beforeEach(() => {
     curve = new Secp256k1();
-    modulus = curve.n;
   });
 
-  it("should derive a key pair and be able to recover the private key if the threshold is met", () => {
+  it("should derive a key pair and be able to recover the private key if the threshold is met", async () => {
     // 2 / 3 Scheme.
     const t = 2;
     const n = 3;
 
-    const G = new Point(curve, curve.gx, curve.gy);
-
-    const dkg = new DKG(t, n, G, modulus);
-    const pks = dkg.run();
+    const dkg = new DKG(t, n, curve);
+    const pks = await dkg.run();
 
     const [s, sPrime] = calculateSecrets(dkg, t);
 
@@ -32,15 +28,13 @@ describe("Distributed Key Generation", () => {
     expect(allPksEqual(pks)).toBe(true);
   });
 
-  it("should derive a key pair and be able to recover the private key if the threshold is exceeded", () => {
+  it("should derive a key pair and be able to recover the private key if the threshold is exceeded", async () => {
     // 2 / 3 Scheme.
     const t = 2;
     const n = 3;
 
-    const G = new Point(curve, curve.gx, curve.gy);
-
-    const dkg = new DKG(t, n, G, modulus);
-    const pks = dkg.run();
+    const dkg = new DKG(t, n, curve);
+    const pks = await dkg.run();
 
     const [s, sPrime] = calculateSecrets(dkg, n);
 
@@ -48,15 +42,13 @@ describe("Distributed Key Generation", () => {
     expect(allPksEqual(pks)).toBe(true);
   });
 
-  it("should derive a key pair and not be able to recover the private key if the threshold is not met", () => {
+  it("should derive a key pair and not be able to recover the private key if the threshold is not met", async () => {
     // 2 / 3 Scheme.
     const t = 2;
     const n = 3;
 
-    const G = new Point(curve, curve.gx, curve.gy);
-
-    const dkg = new DKG(t, n, G, modulus);
-    const pks = dkg.run();
+    const dkg = new DKG(t, n, curve);
+    const pks = await dkg.run();
 
     const [s, sPrime] = calculateSecrets(dkg, t - 1);
 

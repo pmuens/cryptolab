@@ -1,4 +1,5 @@
 import { ECC } from "../shared/ecc/ecc.ts";
+import { Curve } from "../shared/ecc/curve.ts";
 import { Point } from "../shared/ecc/point.ts";
 import { PrivateKey, PublicKey } from "../shared/ecc/types.ts";
 import { concat, getRandomNumber, mod } from "../shared/utils.ts";
@@ -8,8 +9,8 @@ export class SchnorrSignature extends ECC {
   r: bigint;
   R: Point;
 
-  constructor(sk?: PrivateKey) {
-    super(sk);
+  constructor(sk?: PrivateKey, curve?: Curve) {
+    super(sk, curve);
     this.G = new Point(this.curve, this.curve.gx, this.curve.gy);
     // Create a random nonce upon initialization.
     const { r, R } = this.createNonce();

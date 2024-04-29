@@ -1,20 +1,26 @@
-import { mod } from "../shared/utils.ts";
+import { assert } from "$std/assert/assert.ts";
+
+import { Curve } from "../shared/ecc/curve.ts";
 import { Point } from "../shared/ecc/point.ts";
+import { mod, pk2Bytes } from "../shared/utils.ts";
 import { Evaluation, Polynomial } from "../shared/polynomial.ts";
+import { SchnorrSignature, Signature } from "../schnorr-signature/main.ts";
 import { PedersenCommitment } from "../pedersen-commitment-scheme/main.ts";
 
 export class DKG {
   t: number;
   G: Point;
+  curve: Curve;
   modulus: bigint;
   parties: Party[] = [];
   pedersen: PedersenCommitment;
 
-  constructor(t: number, n: number, G: Point, modulus: bigint) {
+  constructor(t: number, n: number, curve: Curve) {
     this.t = t;
-    this.G = G;
-    this.modulus = modulus;
+    this.curve = curve;
+    this.modulus = curve.n;
     this.pedersen = new PedersenCommitment(4711n);
+    this.G = new Point(curve, curve.gx, curve.gy);
 
     for (let i = 0; i < n; i++) {
       const id = i + 1;
@@ -24,20 +30,23 @@ export class DKG {
     }
   }
 
-  run(): Point[] {
+  async run(): Promise<Point[]> {
     let results: Result[];
 
     results = this.calculateCoefficientCommitments();
     this.broadcastCoefficientCommitments(results);
 
-    results = this.calculatePolynomialEvaluations();
-    this.sendPolynomialEvaluations(results);
-
-    this.verifyCoefficientCommitments();
-
     results = this.calculateMaskedCoefficients();
     this.broadcastMaskedCoefficients(results);
 
+    results = await this.calculateZeroCoefficientZkps();
+    this.broadcastZeroCoefficientZkps(results);
+
+    results = this.calculatePolynomialEvaluations();
+    this.sendPolynomialEvaluations(results);
+
+    await this.verifyZeroCoefficientZkps();
+    this.verifyCoefficientCommitments();
     this.verifyPolynomialEvaluations();
 
     this.calculateKeyShares();
@@ -170,6 +179,56 @@ export class DKG {
     }
   }
 
+  // --- Zero Coefficient ZKPs ---
+  private async calculateZeroCoefficientZkps(): Promise<Result[]> {
+    const results: Result[] = [];
+
+    for await (const self of this.parties) {
+      const zeroCoefficient = self.fPolynomial.coefficients[0];
+      const schnorr = new SchnorrSignature(zeroCoefficient, this.curve);
+      const signature = await schnorr.sign(pk2Bytes(schnorr.pk));
+
+      // Note: Computing a signature over the public key of the zeroth coefficient
+      //  assumes that the Schnorr signature implementation we're using uses the
+      //  same curve and derives the public key the same way we do.
+      assert(schnorr.curve.name === this.curve.name);
+
+      for (const other of this.parties) {
+        if (self.id !== other.id) {
+          results.push({
+            sender: self,
+            receiver: other,
+            data: signature,
+          });
+        }
+      }
+    }
+
+    return results;
+  }
+
+  private broadcastZeroCoefficientZkps(results: Result[]): void {
+    results.forEach((result) =>
+      result.receiver.setZeroCoefficientZkp(
+        result.sender.id,
+        result.data as Signature,
+      )
+    );
+  }
+
+  private async verifyZeroCoefficientZkps(): Promise<void> {
+    let allValid = false;
+    for await (const party of this.parties) {
+      allValid = await party.verifyZeroCoefficientZkps();
+    }
+
+    if (!allValid) {
+      throw new Error(
+        "Zero Coefficient ZKPs evaluation failed...",
+      );
+    }
+  }
+
   // --- Masked Coefficients ---
   private calculateMaskedCoefficients(): Result[] {
     const results: Result[] = [];
@@ -258,6 +317,11 @@ class Party {
     this.partyData[id].maskedCoefficients = coefficients;
   }
 
+  setZeroCoefficientZkp(id: number, zkp: Signature): void {
+    this.ensurePartyData(id);
+    this.partyData[id].zeroCoefficientZkp = zkp;
+  }
+
   verifyCoefficientCommitments(G: Point, H: Point): boolean {
     this.checkDataIntegrity(DataProperty.CoefficientCommitments);
     this.checkDataIntegrity(DataProperty.FPolynomialEvaluations);
@@ -321,6 +385,31 @@ class Party {
     return true;
   }
 
+  async verifyZeroCoefficientZkps(): Promise<boolean> {
+    this.checkDataIntegrity(DataProperty.MaskedCoefficients);
+    this.checkDataIntegrity(DataProperty.ZeroCoefficientZkp);
+
+    const schnorr = new SchnorrSignature();
+
+    for await (const [_, value] of Object.entries(this.partyData)) {
+      const { maskedCoefficients, zeroCoefficientZkp } = value;
+
+      const pk = maskedCoefficients[0];
+      const isValid = await schnorr.verify(
+        pk,
+        pk2Bytes(pk),
+        // deno-lint-ignore no-non-null-assertion
+        zeroCoefficientZkp!,
+      );
+
+      if (!isValid) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   calculateKeyShare(): bigint {
     this.checkDataIntegrity(DataProperty.FPolynomialEvaluations);
 
@@ -369,11 +458,17 @@ class Party {
     const { partyData } = this;
 
     const success = Object.entries(partyData).every(([key]) => {
-      const firstEntryValue = Object.entries(partyData)[0][1];
-      const currentEntryValue = partyData[Number(key)];
+      const firstEntry = Object.entries(partyData)[0][1];
+      const currentEntry = partyData[Number(key)];
 
-      return firstEntryValue[property].length ===
-        currentEntryValue[property].length;
+      const firstValue = firstEntry[property];
+      const currentValue = currentEntry[property];
+
+      if (Array.isArray(firstValue) && Array.isArray(currentValue)) {
+        return firstValue.length === currentValue.length;
+      }
+
+      return firstValue && currentValue;
     });
 
     if (!success) {
@@ -390,6 +485,7 @@ class Party {
         fPolynomialEvaluations: [],
         hPolynomialEvaluations: [],
         maskedCoefficients: [],
+        zeroCoefficientZkp: undefined,
       };
     }
   }
@@ -405,6 +501,7 @@ enum DataProperty {
   MaskedCoefficients = "maskedCoefficients",
   FPolynomialEvaluations = "fPolynomialEvaluations",
   HPolynomialEvaluations = "hPolynomialEvaluations",
+  ZeroCoefficientZkp = "zeroCoefficientZkp",
 }
 
 type Data = {
@@ -413,13 +510,14 @@ type Data = {
     fPolynomialEvaluations: Evaluation[];
     hPolynomialEvaluations: Evaluation[];
     maskedCoefficients: Point[];
+    zeroCoefficientZkp?: Signature;
   };
 };
 
 type Result = {
   sender: Party;
   receiver: Party;
-  data: EvaluationResult | Point[];
+  data: EvaluationResult | Signature | Point[];
 };
 
 type EvaluationResult = Evaluation & { type: PolynomialType };

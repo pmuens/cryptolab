@@ -1,8 +1,9 @@
 import { expect } from "$std/expect/mod.ts";
 import { describe, it } from "$std/testing/bdd.ts";
 
+import { pk2Bytes } from "../shared/utils.ts";
+import { SchnorrSignatureAggregation } from "./main.ts";
 import { SchnorrSignature } from "../schnorr-signature/main.ts";
-import { pk2Bytes, SchnorrSignatureAggregation } from "./main.ts";
 
 describe("Schnorr Signature Aggregation", () => {
   it("should generate a valid signature with multiple participants", async () => {

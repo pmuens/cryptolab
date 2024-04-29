@@ -1,6 +1,5 @@
 import { Point } from "../shared/ecc/point.ts";
-import { concat, mod } from "../shared/utils.ts";
-import { PublicKey } from "../shared/ecc/types.ts";
+import { mod, pk2Bytes } from "../shared/utils.ts";
 import { SchnorrSignature, Signature } from "../schnorr-signature/main.ts";
 
 export class SchnorrSignatureAggregation extends SchnorrSignature {
@@ -65,10 +64,6 @@ export class SchnorrSignatureAggregation extends SchnorrSignature {
     this.pk = pk;
     this.signers = signers;
   }
-}
-
-export function pk2Bytes(pk: PublicKey): Uint8Array {
-  return concat(pk.x, pk.y);
 }
 
 type Signer = {

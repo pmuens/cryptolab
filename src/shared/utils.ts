@@ -1,3 +1,4 @@
+import { PublicKey } from "./ecc/types.ts";
 import { assert } from "$std/assert/mod.ts";
 
 export function getRandomNumber(bytes = 32, modulus?: bigint): bigint {
@@ -141,4 +142,8 @@ export function concat(...items: (bigint | Uint8Array)[]): Uint8Array {
   });
 
   return data;
+}
+
+export function pk2Bytes(pk: PublicKey): Uint8Array {
+  return concat(pk.x, pk.y);
 }
