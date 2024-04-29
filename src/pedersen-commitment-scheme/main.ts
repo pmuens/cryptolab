@@ -7,7 +7,7 @@ export class PedersenCommitment {
   G: Point;
 
   // `x` is a secret that protocol participants shouldn't know.
-  constructor(x: bigint = 4711n) {
+  constructor(x: bigint = getRandomNumber()) {
     const curve = new Secp256k1();
     const G = new Point(curve, curve.gx, curve.gy);
 
