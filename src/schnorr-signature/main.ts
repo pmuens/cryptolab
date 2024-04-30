@@ -11,7 +11,7 @@ export class SchnorrSignature extends ECC {
 
   constructor(sk?: PrivateKey, curve?: Curve) {
     super(sk, curve);
-    this.G = new Point(this.curve, this.curve.gx, this.curve.gy);
+    this.G = this.curve.G;
     // Create a random nonce upon initialization.
     const { r, R } = this.createNonce();
     this.r = r;

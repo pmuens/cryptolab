@@ -15,9 +15,7 @@ export class ECC {
     }
 
     const privateKey = sk || getRandomNumber(32, this.curve.n);
-
-    const G = new Point(this.curve, this.curve.gx, this.curve.gy);
-    const publicKey = G.scalarMul(privateKey);
+    const publicKey = this.curve.G.scalarMul(privateKey);
 
     this.sk = privateKey;
     this.pk = publicKey;

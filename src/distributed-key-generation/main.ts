@@ -18,9 +18,9 @@ export class DKG {
   constructor(t: number, n: number, curve: Curve) {
     this.t = t;
     this.curve = curve;
+    this.G = this.curve.G;
     this.modulus = curve.n;
     this.pedersen = new PedersenCommitment();
-    this.G = new Point(curve, curve.gx, curve.gy);
 
     for (let i = 0; i < n; i++) {
       const id = i + 1;

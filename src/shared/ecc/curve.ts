@@ -2,6 +2,7 @@ import { assert } from "$std/assert/mod.ts";
 import { crypto } from "$std/crypto/mod.ts";
 import { DigestAlgorithm } from "$std/crypto/crypto.ts";
 
+import { Point } from "./point.ts";
 import { buf2hex } from "../utils.ts";
 
 export class Curve {
@@ -9,10 +10,9 @@ export class Curve {
   p: bigint;
   a: bigint;
   b: bigint;
-  gx: bigint;
-  gy: bigint;
   n: bigint;
   h: bigint;
+  G: Point;
 
   constructor(
     name: string,
@@ -28,10 +28,9 @@ export class Curve {
     this.p = p;
     this.a = a;
     this.b = b;
-    this.gx = gx;
-    this.gy = gy;
     this.n = n;
     this.h = h;
+    this.G = new Point(this, gx, gy);
   }
 
   async bytes2Scalar(

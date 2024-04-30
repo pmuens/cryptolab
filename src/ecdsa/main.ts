@@ -1,16 +1,8 @@
 import { ECC } from "../shared/ecc/ecc.ts";
-import { Point } from "../shared/ecc/point.ts";
-import { PrivateKey, PublicKey } from "../shared/ecc/types.ts";
+import { PublicKey } from "../shared/ecc/types.ts";
 import { getRandomNumber, inverseOf, mod } from "../shared/utils.ts";
 
 export class ECDSA extends ECC {
-  G: Point;
-
-  constructor(sk?: PrivateKey) {
-    super(sk);
-    this.G = new Point(this.curve, this.curve.gx, this.curve.gy);
-  }
-
   async sign(message: Uint8Array): Promise<Signature> {
     const z = await this.curve.bytes2Scalar(message);
 
@@ -18,7 +10,7 @@ export class ECDSA extends ECC {
     let s = 0n;
     while (r === 0n || s === 0n) {
       const k = getRandomNumber(32, this.curve.n);
-      const R = this.G.scalarMul(k);
+      const R = this.curve.G.scalarMul(k);
       r = mod(R.x, this.curve.n);
       s = mod((z + r * this.sk) * inverseOf(k, this.curve.n), this.curve.n);
     }
@@ -42,7 +34,7 @@ export class ECDSA extends ECC {
       this.curve.n,
     );
 
-    const R = this.G.scalarMul(u).add(pk.scalarMul(v));
+    const R = this.curve.G.scalarMul(u).add(pk.scalarMul(v));
 
     return mod(signature.r, this.curve.n) === mod(R.x, this.curve.n);
   }
