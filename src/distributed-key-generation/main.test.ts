@@ -1,16 +1,15 @@
 import { expect } from "$std/expect/mod.ts";
-import { beforeEach, describe, it } from "$std/testing/bdd.ts";
+import { beforeAll, describe, it } from "$std/testing/bdd.ts";
 
-import { DKG } from "./main.ts";
+import { DKG, Party } from "./main.ts";
 import { mod } from "../shared/utils.ts";
-import { Point } from "../shared/ecc/point.ts";
 import { Secp256k1 } from "../shared/ecc/curve.ts";
 import { Lagrange } from "../lagrange-interpolation/main.ts";
 
 describe("Distributed Key Generation", () => {
   let curve: Secp256k1;
 
-  beforeEach(() => {
+  beforeAll(() => {
     curve = new Secp256k1();
   });
 
@@ -19,13 +18,12 @@ describe("Distributed Key Generation", () => {
     const t = 2;
     const n = 3;
 
-    const dkg = new DKG(t, n, curve);
-    const pks = await dkg.run();
+    const dkg = await DKG.init(t, n, curve);
+    await dkg.run();
 
-    const [s, sPrime] = calculateSecrets(dkg, t);
+    const [s, sPrime] = calculateSecrets(dkg.parties, t, curve.n);
 
     expect(sPrime).toBe(s);
-    expect(allPksEqual(pks)).toBe(true);
   });
 
   it("should derive a key pair and be able to recover the private key if the threshold is exceeded", async () => {
@@ -33,13 +31,12 @@ describe("Distributed Key Generation", () => {
     const t = 2;
     const n = 3;
 
-    const dkg = new DKG(t, n, curve);
-    const pks = await dkg.run();
+    const dkg = await DKG.init(t, n, curve);
+    await dkg.run();
 
-    const [s, sPrime] = calculateSecrets(dkg, n);
+    const [s, sPrime] = calculateSecrets(dkg.parties, n, curve.n);
 
     expect(sPrime).toBe(s);
-    expect(allPksEqual(pks)).toBe(true);
   });
 
   it("should derive a key pair and not be able to recover the private key if the threshold is not met", async () => {
@@ -47,33 +44,31 @@ describe("Distributed Key Generation", () => {
     const t = 2;
     const n = 3;
 
-    const dkg = new DKG(t, n, curve);
-    const pks = await dkg.run();
+    const dkg = await DKG.init(t, n, curve);
+    await dkg.run();
 
-    const [s, sPrime] = calculateSecrets(dkg, t - 1);
+    const [s, sPrime] = calculateSecrets(dkg.parties, t - 1, curve.n);
 
     expect(sPrime).not.toBe(s);
-    expect(allPksEqual(pks)).toBe(true);
   });
 });
 
-// See: https://stackoverflow.com/a/35568895
-function allPksEqual(pks: Point[]): boolean {
-  return pks.every((pk) => pk.x === pks[0].x && pk.y === pks[0].y);
-}
+function calculateSecrets(
+  parties: Party[],
+  t: number,
+  modulus: bigint,
+): bigint[] {
+  const lagrange = new Lagrange(modulus);
 
-function calculateSecrets(dkg: DKG, t: number): bigint[] {
-  const lagrange = new Lagrange(dkg.modulus);
-
-  const secret = dkg.parties.slice(0, t + 1).reduce(
-    (accum, party) =>
-      mod(accum + party.fPolynomial.coefficients[0], dkg.modulus),
+  const secret = parties.slice(0, t + 1).reduce(
+    (accum, party) => mod(accum + party.polynomial.coefficients[0], modulus),
     0n,
   );
 
-  const evaluations = dkg.parties.map((party) => ({
+  const evaluations = parties.map((party) => ({
     x: BigInt(party.id),
-    y: party.keyShare,
+    // deno-lint-ignore no-non-null-assertion
+    y: party.secretShare!,
   }));
   const f = lagrange.interpolate(evaluations);
   const secretPrime = f(0n);

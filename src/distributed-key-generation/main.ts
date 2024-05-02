@@ -1,523 +1,407 @@
 import { assert } from "$std/assert/assert.ts";
 
-import { Curve } from "../shared/ecc/curve.ts";
 import { Point } from "../shared/ecc/point.ts";
+import { Curve } from "../shared/ecc/curve.ts";
 import { mod, pk2Bytes } from "../shared/utils.ts";
-import { Evaluation, Polynomial } from "../shared/polynomial.ts";
+import { Polynomial } from "../shared/polynomial.ts";
 import { SchnorrSignature, Signature } from "../schnorr-signature/main.ts";
-import { PedersenCommitment } from "../pedersen-commitment-scheme/main.ts";
 
+// The following is an implementation of the Distributed Key Generation algorithm described in the
+//  [FROST: Flexible Round-Optimized Schnorr Threshold Signatures](https://eprint.iacr.org/2020/852) paper.
 export class DKG {
-  t: number;
-  G: Point;
-  curve: Curve;
-  modulus: bigint;
   parties: Party[] = [];
-  pedersen: PedersenCommitment;
 
-  constructor(t: number, n: number, curve: Curve) {
-    this.t = t;
-    this.curve = curve;
-    this.G = this.curve.G;
-    this.modulus = curve.n;
-    this.pedersen = new PedersenCommitment();
+  static async init(t: number, n: number, curve: Curve): Promise<DKG> {
+    const promises: Promise<Party>[] = [];
 
     for (let i = 0; i < n; i++) {
       const id = i + 1;
-      const party = new Party(id, this.t, this.modulus);
-
-      this.parties.push(party);
+      promises.push(Party.init(id, t, curve));
     }
+
+    const parties = await Promise.all(promises);
+
+    return new DKG(parties);
   }
 
-  async run(): Promise<Point[]> {
-    let results: Result[];
+  async run(): Promise<Point> {
+    this.establishConnections();
 
-    results = this.calculateCoefficientCommitments();
-    this.broadcastCoefficientCommitments(results);
+    // Round #1.
+    this.broadcastKosk();
+    this.broadcastCommitments();
+    await this.verifyKosks();
 
-    results = this.calculateMaskedCoefficients();
-    this.broadcastMaskedCoefficients(results);
-
-    results = await this.calculateZeroCoefficientZkps();
-    this.broadcastZeroCoefficientZkps(results);
-
-    results = this.calculatePolynomialEvaluations();
-    this.sendPolynomialEvaluations(results);
-
-    await this.verifyZeroCoefficientZkps();
-    this.verifyCoefficientCommitments();
-    this.verifyPolynomialEvaluations();
-
-    this.calculateKeyShares();
+    // Round #2.
+    this.sendEvaluations();
+    this.verifyEvaluations();
+    this.calculateSecretShare();
     return this.calculatePublicKey();
   }
 
-  // --- Coefficient Commitments ---
-  private calculateCoefficientCommitments(): Result[] {
-    const results: Result[] = [];
-
+  private establishConnections(): void {
     for (const self of this.parties) {
-      self.checkDataIntegrity(DataProperty.FPolynomialEvaluations);
-      self.checkDataIntegrity(DataProperty.HPolynomialEvaluations);
-      if (
-        self.fPolynomial.coefficients.length !==
-          self.hPolynomial.coefficients.length
-      ) {
+      for (const other of this.parties) {
+        if (self.id !== other.id) {
+          self.connect(other);
+        }
+      }
+    }
+  }
+
+  private broadcastKosk(): void {
+    for (const party of this.parties) {
+      party.broadcastKosk();
+    }
+  }
+
+  private broadcastCommitments(): void {
+    for (const party of this.parties) {
+      party.broadcastCommitments();
+    }
+  }
+
+  private async verifyKosks(): Promise<void> {
+    const promises: Promise<boolean>[] = [];
+    for (const party of this.parties) {
+      promises.push(party.verifyKosks());
+    }
+
+    const results = await Promise.all(promises);
+    const allValid = results.every((result) => result === true);
+
+    if (!allValid) {
+      throw new Error("Error validating KOSKs...");
+    }
+  }
+
+  private sendEvaluations(): void {
+    for (const party of this.parties) {
+      party.sendEvaluations();
+    }
+  }
+
+  private verifyEvaluations(): void {
+    const results: boolean[] = [];
+
+    for (const party of this.parties) {
+      results.push(party.verifyEvaluations());
+    }
+
+    const allValid = results.every((result) => result === true);
+
+    if (!allValid) {
+      throw new Error("Error validating evaluations...");
+    }
+  }
+
+  private calculateSecretShare(): void {
+    for (const party of this.parties) {
+      party.calculateSecretShare();
+    }
+  }
+
+  private calculatePublicKey(): Point {
+    const pks: Point[] = [];
+
+    for (const party of this.parties) {
+      pks.push(party.calculatePublicKey());
+    }
+
+    // See: https://stackoverflow.com/a/35568895
+    const allEqual = pks.every((pk) => pk.x === pks[0].x && pk.y === pks[0].y);
+
+    if (!allEqual) {
+      throw new Error("Public Keys aren't all equal...");
+    }
+
+    return pks[0];
+  }
+
+  private constructor(parties: Party[]) {
+    this.parties = parties;
+  }
+}
+
+export class Party implements P2P {
+  id: Id;
+  curve: Curve;
+  polynomial: Polynomial;
+  f: (x: bigint) => bigint;
+  kosk: Signature;
+  commitments: Point[];
+  schnorr: SchnorrSignature;
+  secretShare?: bigint;
+  publicKey?: Point;
+  parties: PartyData = {};
+
+  static async init(
+    id: number,
+    t: number,
+    curve: Curve,
+  ): Promise<Party> {
+    if (id <= 0) {
+      throw new Error(`The party's id needs to be >= 1 but is ${id}...`);
+    }
+    const polynomial = new Polynomial(t - 1, curve.n);
+
+    const coefficients = polynomial.coefficients;
+    const commitments = coefficients.map((coef) => curve.G.scalarMul(coef));
+
+    const sk = polynomial.coefficients[0];
+    const pk = commitments[0];
+    const schnorr = new SchnorrSignature(sk, curve);
+
+    assert(schnorr.curve.name === curve.name);
+    assert(schnorr.pk.x === pk.x && schnorr.pk.y === pk.y);
+
+    const kosk = await schnorr.sign(pk2Bytes(pk));
+
+    return new Party(
+      id,
+      curve,
+      polynomial,
+      commitments,
+      kosk,
+      schnorr,
+    );
+  }
+
+  connect(party: Party): void {
+    const id = party.id;
+    const send = party.send.bind(party);
+    const receive = party.receive.bind(party);
+
+    this.parties[id] = {
+      send,
+      receive,
+    };
+  }
+
+  broadcast(payload: Payload): void {
+    for (const key of Object.keys(this.parties)) {
+      const id = Number(key);
+      this.send(id, payload);
+    }
+  }
+
+  send(to: Id, payload: Payload): void {
+    // deno-lint-ignore no-non-null-assertion
+    this.parties[to].receive!(this.id, payload);
+  }
+
+  receive(from: Id, payload: Payload): void {
+    switch (payload.type) {
+      case Message.Kosk:
+        this.parties[from].kosk = payload.data.kosk;
+        break;
+      case Message.Commitments:
+        this.parties[from].commitments = payload.data.commitments;
+        break;
+      case Message.Evaluation:
+        this.parties[from].y = payload.data.y;
+        break;
+    }
+  }
+
+  broadcastKosk(): void {
+    this.broadcast({
+      type: Message.Kosk,
+      data: {
+        kosk: this.kosk,
+      },
+    });
+  }
+
+  broadcastCommitments(): void {
+    this.broadcast({
+      type: Message.Commitments,
+      data: {
+        commitments: this.commitments,
+      },
+    });
+  }
+
+  async verifyKosks(): Promise<boolean> {
+    const promises: Promise<boolean>[] = [];
+    for (const key of Object.keys(this.parties)) {
+      const id = Number(key);
+      promises.push(this.verifyKosk(id));
+    }
+
+    const results = await Promise.all(promises);
+
+    return results.every((result) => result === true);
+  }
+
+  sendEvaluations(): void {
+    const evaluations = this.computeEvaluations();
+
+    for (const evaluation of evaluations) {
+      const { id, y } = evaluation;
+
+      this.send(id, {
+        type: Message.Evaluation,
+        data: {
+          y,
+        },
+      });
+    }
+  }
+
+  verifyEvaluations(): boolean {
+    const results: boolean[] = [];
+
+    for (const key of Object.keys(this.parties)) {
+      const id = Number(key);
+      results.push(this.verifyEvaluation(id));
+    }
+
+    return results.every((result) => result === true);
+  }
+
+  calculateSecretShare(): bigint {
+    const ownY = this.f(BigInt(this.id));
+
+    let result = ownY;
+    for (const [key, data] of Object.entries(this.parties)) {
+      if (!data.y) {
+        const id = Number(key);
         throw new Error(
-          'Coefficients of "f" and "h" polynomials don\'t have the same length...',
+          `Party #${this.id} is missing the Y value from party #${id}...`,
         );
       }
 
-      for (const other of this.parties) {
-        if (self.id !== other.id) {
-          const commitments = self.fPolynomial.coefficients.map(
-            (fCoef, index) => {
-              const hCoef = self.hPolynomial.coefficients[index];
-              const commitment = this.pedersen.create(fCoef, hCoef);
-              return commitment.c;
-            },
-          );
+      result = mod(result + data.y, this.curve.n);
+    }
 
-          results.push({
-            sender: self,
-            receiver: other,
-            data: commitments,
-          });
-        }
+    this.secretShare = result;
+
+    return this.secretShare;
+  }
+
+  calculatePublicKey(): Point {
+    const ownZeroCommitment = this.commitments[0];
+
+    let result = ownZeroCommitment;
+    for (const [key, data] of Object.entries(this.parties)) {
+      if (!data.commitments?.length) {
+        const id = Number(key);
+        throw new Error(
+          `Party #${this.id} is missing commitments from party #${id}...`,
+        );
       }
+
+      const zeroCommitment = data.commitments[0];
+      result = result.add(zeroCommitment);
+    }
+
+    this.publicKey = result;
+
+    return this.publicKey;
+  }
+
+  private computeEvaluations(): { id: Id; y: bigint }[] {
+    const results: { id: Id; y: bigint }[] = [];
+
+    for (const [key] of Object.keys(this.parties)) {
+      const id = Number(key);
+      const y = this.computeEvaluation(id);
+      results.push({ id, y });
     }
 
     return results;
   }
 
-  private broadcastCoefficientCommitments(
-    results: Result[],
-  ): void {
-    results.forEach((result) =>
-      result.receiver.setCoefficientCommitments(
-        result.sender.id,
-        result.data as Point[],
-      )
-    );
-  }
-
-  private verifyCoefficientCommitments(): void {
-    const allValid = this.parties.every((party) =>
-      party.verifyCoefficientCommitments(this.pedersen.G, this.pedersen.H)
-    );
-
-    if (!allValid) {
-      throw new Error(
-        "Coefficient commitments evaluation failed...",
-      );
-    }
-  }
-
-  // --- Polynomial Evaluations ---
-  private calculatePolynomialEvaluations(): Result[] {
-    const results: Result[] = [];
-
-    for (const self of this.parties) {
-      for (const other of this.parties) {
-        if (self.id !== other.id) {
-          const fEvaluation = {
-            type: PolynomialType.F,
-            x: BigInt(other.id),
-            y: self.f(BigInt(other.id)),
-          };
-          results.push({
-            sender: self,
-            receiver: other,
-            data: fEvaluation,
-          });
-
-          const hEvaluation = {
-            type: PolynomialType.H,
-            x: BigInt(other.id),
-            y: self.h(BigInt(other.id)),
-          };
-          results.push({
-            sender: self,
-            receiver: other,
-            data: hEvaluation,
-          });
-        }
-      }
+  private async verifyKosk(id: Id): Promise<boolean> {
+    const { kosk, commitments } = this.parties[id];
+    if (!kosk || !commitments) {
+      return false;
     }
 
-    return results;
+    const pk = commitments[0];
+    return await this.schnorr.verify(pk, pk2Bytes(pk), kosk);
   }
 
-  private sendPolynomialEvaluations(
-    results: Result[],
-  ): void {
-    results.forEach((result) => {
-      const { type, x, y } = result.data as EvaluationResult;
-      const evaluation = {
-        x,
-        y,
-      };
-
-      result.receiver.addEvaluation(
-        type,
-        result.sender.id,
-        evaluation,
-      );
-    });
+  private computeEvaluation(id: Id): bigint {
+    return this.f(BigInt(id));
   }
 
-  private verifyPolynomialEvaluations(): void {
-    const allValid = this.parties.every((party) =>
-      party.verifyPolynomialEvaluations(this.G)
+  private verifyEvaluation(id: Id): boolean {
+    const { commitments, y } = this.parties[id];
+    if (!commitments || !y) {
+      return false;
+    }
+
+    const left = this.curve.G.scalarMul(y);
+    const right = commitments.reduce(
+      (accum, comm, idx) => accum.add(comm.scalarMul(BigInt(this.id ** idx))),
+      Point.infinity(this.curve),
     );
 
-    if (!allValid) {
-      throw new Error(
-        "Polynomial evaluation failed...",
-      );
-    }
+    return left.x === right.x && left.y === right.y;
   }
 
-  // --- Zero Coefficient ZKPs ---
-  private async calculateZeroCoefficientZkps(): Promise<Result[]> {
-    const results: Result[] = [];
-
-    for await (const self of this.parties) {
-      const zeroCoefficient = self.fPolynomial.coefficients[0];
-      const schnorr = new SchnorrSignature(zeroCoefficient, this.curve);
-      const signature = await schnorr.sign(pk2Bytes(schnorr.pk));
-
-      // Note: Computing a signature over the public key of the zeroth coefficient
-      //  assumes that the Schnorr signature implementation we're using uses the
-      //  same curve and derives the public key the same way we do.
-      assert(schnorr.curve.name === this.curve.name);
-
-      for (const other of this.parties) {
-        if (self.id !== other.id) {
-          results.push({
-            sender: self,
-            receiver: other,
-            data: signature,
-          });
-        }
-      }
-    }
-
-    return results;
-  }
-
-  private broadcastZeroCoefficientZkps(results: Result[]): void {
-    results.forEach((result) =>
-      result.receiver.setZeroCoefficientZkp(
-        result.sender.id,
-        result.data as Signature,
-      )
-    );
-  }
-
-  private async verifyZeroCoefficientZkps(): Promise<void> {
-    let allValid = false;
-    for await (const party of this.parties) {
-      allValid = await party.verifyZeroCoefficientZkps();
-    }
-
-    if (!allValid) {
-      throw new Error(
-        "Zero Coefficient ZKPs evaluation failed...",
-      );
-    }
-  }
-
-  // --- Masked Coefficients ---
-  private calculateMaskedCoefficients(): Result[] {
-    const results: Result[] = [];
-
-    for (const self of this.parties) {
-      const maskedCoefficients = self.fPolynomial.coefficients.map((coef) =>
-        this.G.scalarMul(coef)
-      );
-
-      for (const other of this.parties) {
-        if (self.id !== other.id) {
-          results.push({
-            sender: self,
-            receiver: other,
-            data: maskedCoefficients,
-          });
-        }
-      }
-    }
-
-    return results;
-  }
-
-  private broadcastMaskedCoefficients(
-    results: Result[],
-  ): void {
-    results.forEach((result) =>
-      result.receiver.setMaskedCoefficients(
-        result.sender.id,
-        result.data as Point[],
-      )
-    );
-  }
-
-  // --- Key Shares & Public Key ---
-  private calculateKeyShares(): void {
-    this.parties.forEach((party) => party.calculateKeyShare());
-  }
-
-  private calculatePublicKey(): Point[] {
-    return this.parties.map((party) => party.calculatePublicKey(this.G));
-  }
-}
-
-class Party {
-  id: number;
-  keyShare = 0n;
-  modulus: bigint;
-  fPolynomial: Polynomial;
-  hPolynomial: Polynomial;
-  f: (x: bigint) => bigint;
-  h: (x: bigint) => bigint;
-  partyData: Data;
-
-  constructor(id: number, t: number, modulus: bigint) {
+  private constructor(
+    id: Id,
+    curve: Curve,
+    polynomial: Polynomial,
+    commitments: Point[],
+    kosk: Signature,
+    schnorr: SchnorrSignature,
+  ) {
     this.id = id;
-    this.modulus = modulus;
-    this.fPolynomial = new Polynomial(t - 1, modulus);
-    this.hPolynomial = new Polynomial(t - 1, modulus);
-    this.f = this.fPolynomial.evaluate.bind(this.fPolynomial);
-    this.h = this.hPolynomial.evaluate.bind(this.hPolynomial);
-    this.partyData = {};
-  }
-
-  addEvaluation(
-    type: PolynomialType,
-    id: number,
-    evaluation: Evaluation,
-  ): void {
-    this.ensurePartyData(id);
-
-    if (type === PolynomialType.F) {
-      this.partyData[id].fPolynomialEvaluations.push(evaluation);
-    } else if (type === PolynomialType.H) {
-      this.partyData[id].hPolynomialEvaluations.push(evaluation);
-    }
-  }
-
-  setCoefficientCommitments(id: number, commitments: Point[]): void {
-    this.ensurePartyData(id);
-    this.partyData[id].coefficientCommitments = commitments;
-  }
-
-  setMaskedCoefficients(id: number, coefficients: Point[]): void {
-    this.ensurePartyData(id);
-    this.partyData[id].maskedCoefficients = coefficients;
-  }
-
-  setZeroCoefficientZkp(id: number, zkp: Signature): void {
-    this.ensurePartyData(id);
-    this.partyData[id].zeroCoefficientZkp = zkp;
-  }
-
-  verifyCoefficientCommitments(G: Point, H: Point): boolean {
-    this.checkDataIntegrity(DataProperty.CoefficientCommitments);
-    this.checkDataIntegrity(DataProperty.FPolynomialEvaluations);
-    this.checkDataIntegrity(DataProperty.HPolynomialEvaluations);
-
-    for (const [_, value] of Object.entries(this.partyData)) {
-      const {
-        fPolynomialEvaluations,
-        hPolynomialEvaluations,
-        coefficientCommitments,
-      } = value;
-
-      const left = coefficientCommitments.reduce((accum, comm, index) => {
-        const result = comm.scalarMul(BigInt(this.id ** index));
-        return accum.add(result);
-      }, Point.infinity(G.curve));
-
-      // Note: Using explicit typing here because we know that the
-      //  accumulator is a `Point` (but the TypeScript compiler doesn't).
-      const right = fPolynomialEvaluations.reduce<Point>(
-        (accum, fEval, index) => {
-          const hEval = hPolynomialEvaluations[index];
-          const result = G.scalarMul(fEval.y).add(H.scalarMul(hEval.y));
-          return accum.add(result);
-        },
-        Point.infinity(G.curve),
-      );
-
-      const isValid = left.x === right.x && left.y === right.y;
-
-      if (!isValid) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  verifyPolynomialEvaluations(G: Point): boolean {
-    this.checkDataIntegrity(DataProperty.FPolynomialEvaluations);
-    this.checkDataIntegrity(DataProperty.MaskedCoefficients);
-
-    for (const [_, value] of Object.entries(this.partyData)) {
-      const { fPolynomialEvaluations, maskedCoefficients } = value;
-
-      for (const evaluation of fPolynomialEvaluations) {
-        const left = G.scalarMul(evaluation.y);
-        const right = maskedCoefficients.reduce((accum, coef, index) => {
-          const result = coef.scalarMul(BigInt(this.id ** index));
-          return accum.add(result);
-        }, Point.infinity(G.curve));
-
-        const isValid = left.x === right.x && left.y === right.y;
-
-        if (!isValid) {
-          return false;
-        }
-      }
-    }
-
-    return true;
-  }
-
-  async verifyZeroCoefficientZkps(): Promise<boolean> {
-    this.checkDataIntegrity(DataProperty.MaskedCoefficients);
-    this.checkDataIntegrity(DataProperty.ZeroCoefficientZkp);
-
-    const schnorr = new SchnorrSignature();
-
-    for await (const [_, value] of Object.entries(this.partyData)) {
-      const { maskedCoefficients, zeroCoefficientZkp } = value;
-
-      const pk = maskedCoefficients[0];
-      const isValid = await schnorr.verify(
-        pk,
-        pk2Bytes(pk),
-        // deno-lint-ignore no-non-null-assertion
-        zeroCoefficientZkp!,
-      );
-
-      if (!isValid) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  calculateKeyShare(): bigint {
-    this.checkDataIntegrity(DataProperty.FPolynomialEvaluations);
-
-    const evaluations: Evaluation[] = [];
-
-    // Evaluate own polynomial and add it to the list of polynomial evaluations.
-    evaluations.push(
-      {
-        x: BigInt(this.id),
-        y: this.f(BigInt(this.id)),
-      },
-    );
-
-    Object.entries(this.partyData).forEach(([_, value]) => {
-      evaluations.push(...value.fPolynomialEvaluations);
-    });
-
-    this.keyShare = evaluations.reduce(
-      (accum, evaluation) => mod(accum + evaluation.y, this.modulus),
-      0n,
-    );
-
-    return this.keyShare;
-  }
-
-  calculatePublicKey(G: Point): Point {
-    this.checkDataIntegrity(DataProperty.MaskedCoefficients);
-
-    const ownZeroCoefficient = this.fPolynomial.coefficients[0];
-    const ownMaskedZeroCoefficient = G.scalarMul(ownZeroCoefficient);
-
-    const othersMaskedZeroCoefficients: Point[] = [];
-    Object.entries(this.partyData).forEach(([_, value]) => {
-      othersMaskedZeroCoefficients.push(value.maskedCoefficients[0]);
-    });
-
-    const others = othersMaskedZeroCoefficients.reduce(
-      (accum, coef) => accum.add(coef),
-      Point.infinity(G.curve),
-    );
-
-    return others.add(ownMaskedZeroCoefficient);
-  }
-
-  checkDataIntegrity(property: DataProperty): void {
-    const { partyData } = this;
-
-    const success = Object.entries(partyData).every(([key]) => {
-      const firstEntry = Object.entries(partyData)[0][1];
-      const currentEntry = partyData[Number(key)];
-
-      const firstValue = firstEntry[property];
-      const currentValue = currentEntry[property];
-
-      if (Array.isArray(firstValue) && Array.isArray(currentValue)) {
-        return firstValue.length === currentValue.length;
-      }
-
-      return firstValue && currentValue;
-    });
-
-    if (!success) {
-      throw new Error(
-        `Data inconsistency with property "${property}" (Party #${this.id})...`,
-      );
-    }
-  }
-
-  private ensurePartyData(id: number): void {
-    if (!this.partyData[id]) {
-      this.partyData[id] = {
-        coefficientCommitments: [],
-        fPolynomialEvaluations: [],
-        hPolynomialEvaluations: [],
-        maskedCoefficients: [],
-        zeroCoefficientZkp: undefined,
-      };
-    }
+    this.curve = curve;
+    this.polynomial = polynomial;
+    this.commitments = commitments;
+    this.kosk = kosk;
+    this.f = polynomial.evaluate.bind(this.polynomial);
+    this.schnorr = schnorr;
   }
 }
 
-enum PolynomialType {
-  F,
-  H,
-}
+type Id = number;
 
-enum DataProperty {
-  CoefficientCommitments = "coefficientCommitments",
-  MaskedCoefficients = "maskedCoefficients",
-  FPolynomialEvaluations = "fPolynomialEvaluations",
-  HPolynomialEvaluations = "hPolynomialEvaluations",
-  ZeroCoefficientZkp = "zeroCoefficientZkp",
-}
+type Send = (to: Id, payload: Payload) => void;
 
-type Data = {
-  [partyId: number]: {
-    coefficientCommitments: Point[];
-    fPolynomialEvaluations: Evaluation[];
-    hPolynomialEvaluations: Evaluation[];
-    maskedCoefficients: Point[];
-    zeroCoefficientZkp?: Signature;
+type Receive = (from: Id, payload: Payload) => void;
+
+type PartyData = {
+  [id: Id]: {
+    send?: Send;
+    receive?: Receive;
+    kosk?: Signature;
+    commitments?: Point[];
+    y?: bigint;
   };
 };
 
-type Result = {
-  sender: Party;
-  receiver: Party;
-  data: EvaluationResult | Signature | Point[];
+interface P2P {
+  connect(other: Party): void;
+  send: Send;
+  receive: Receive;
+  broadcast(payload: Payload): void;
+}
+
+type Payload = {
+  type: Message.Kosk;
+  data: {
+    kosk: Signature;
+  };
+} | {
+  type: Message.Commitments;
+  data: {
+    commitments: Point[];
+  };
+} | {
+  type: Message.Evaluation;
+  data: {
+    y: bigint;
+  };
 };
 
-type EvaluationResult = Evaluation & { type: PolynomialType };
+enum Message {
+  Kosk,
+  Commitments,
+  Evaluation,
+}
