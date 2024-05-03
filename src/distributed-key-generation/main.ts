@@ -8,26 +8,30 @@ import { SchnorrSignature, Signature } from "../schnorr-signature/main.ts";
 
 // The following is an implementation of the Distributed Key Generation algorithm described in the
 //  [FROST: Flexible Round-Optimized Schnorr Threshold Signatures](https://eprint.iacr.org/2020/852) paper.
+// The implementation extends the algorithm in the paper by also offering a way to refresh secret
+//  shares.
 export class DKG {
+  t: number;
   parties: Party[] = [];
 
-  static async init(t: number, n: number, curve: Curve): Promise<DKG> {
-    const promises: Promise<Party>[] = [];
+  constructor(t: number, n: number, curve: Curve) {
+    const parties: Party[] = [];
 
     for (let i = 0; i < n; i++) {
       const id = i + 1;
-      promises.push(Party.init(id, t, curve));
+      parties.push(new Party(id, t, curve));
     }
 
-    const parties = await Promise.all(promises);
-
-    return new DKG(parties);
+    this.t = t;
+    this.parties = parties;
   }
 
   async run(): Promise<Point> {
     this.establishConnections();
 
     // Round #1.
+    this.generateCommitments();
+    await this.generateKosk();
     this.broadcastKosk();
     this.broadcastCommitments();
     await this.verifyKosks();
@@ -37,6 +41,17 @@ export class DKG {
     this.verifyEvaluations();
     this.calculateSecretShare();
     return this.calculatePublicKey();
+  }
+
+  refresh(): void {
+    this.updatePolynomial();
+    this.generateCommitments();
+    this.broadcastCommitments();
+
+    this.sendEvaluations();
+    this.verifyEvaluations();
+
+    this.calculateSecretShare();
   }
 
   private establishConnections(): void {
@@ -49,9 +64,31 @@ export class DKG {
     }
   }
 
+  private updatePolynomial(): void {
+    for (const party of this.parties) {
+      party.updatePolynomial();
+    }
+  }
+
+  private async generateKosk(): Promise<void> {
+    const promises: Promise<Signature>[] = [];
+
+    for (const party of this.parties) {
+      promises.push(party.generateKosk());
+    }
+
+    await Promise.all(promises);
+  }
+
   private broadcastKosk(): void {
     for (const party of this.parties) {
       party.broadcastKosk();
+    }
+  }
+
+  private generateCommitments(): void {
+    for (const party of this.parties) {
+      party.generateCommitments();
     }
   }
 
@@ -117,54 +154,34 @@ export class DKG {
 
     return pks[0];
   }
-
-  private constructor(parties: Party[]) {
-    this.parties = parties;
-  }
 }
 
 export class Party implements P2P {
   id: Id;
+  t: number;
+  epoch = 0;
   curve: Curve;
   polynomial: Polynomial;
-  f: (x: bigint) => bigint;
-  kosk: Signature;
-  commitments: Point[];
-  schnorr: SchnorrSignature;
+  kosk?: Signature;
+  commitments?: Point[];
   secretShare?: bigint;
   publicKey?: Point;
   parties: PartyData = {};
 
-  static async init(
-    id: number,
+  constructor(
+    id: Id,
     t: number,
     curve: Curve,
-  ): Promise<Party> {
+  ) {
     if (id <= 0) {
       throw new Error(`The party's id needs to be >= 1 but is ${id}...`);
     }
-    const polynomial = new Polynomial(t - 1, curve.n);
 
-    const coefficients = polynomial.coefficients;
-    const commitments = coefficients.map((coef) => curve.G.scalarMul(coef));
+    this.id = id;
+    this.t = t;
+    this.curve = curve;
 
-    const sk = polynomial.coefficients[0];
-    const pk = commitments[0];
-    const schnorr = new SchnorrSignature(sk, curve);
-
-    assert(schnorr.curve.name === curve.name);
-    assert(schnorr.pk.x === pk.x && schnorr.pk.y === pk.y);
-
-    const kosk = await schnorr.sign(pk2Bytes(pk));
-
-    return new Party(
-      id,
-      curve,
-      polynomial,
-      commitments,
-      kosk,
-      schnorr,
-    );
+    this.polynomial = this.generatePolynomial();
   }
 
   connect(party: Party): void {
@@ -204,7 +221,34 @@ export class Party implements P2P {
     }
   }
 
+  updatePolynomial(): Polynomial {
+    this.epoch += 1;
+    this.polynomial = this.generatePolynomial();
+    return this.polynomial;
+  }
+
+  async generateKosk(): Promise<Signature> {
+    if (!this.commitments) {
+      throw new Error(`Commitments of party #${this.id} not set...`);
+    }
+
+    const sk = this.polynomial.coefficients[0];
+    const pk = this.commitments[0];
+    const schnorr = new SchnorrSignature(sk, this.curve);
+
+    assert(schnorr.curve.name === this.curve.name);
+    assert(schnorr.pk.x === pk.x && schnorr.pk.y === pk.y);
+
+    this.kosk = await schnorr.sign(pk2Bytes(pk));
+
+    return this.kosk;
+  }
+
   broadcastKosk(): void {
+    if (!this.kosk) {
+      throw new Error(`KOSK of party #${this.id} not set...`);
+    }
+
     this.broadcast({
       type: Message.Kosk,
       data: {
@@ -213,7 +257,28 @@ export class Party implements P2P {
     });
   }
 
+  generateCommitments(): Point[] {
+    const { coefficients } = this.polynomial;
+    let commitments = coefficients.map((coef) => this.curve.G.scalarMul(coef));
+
+    if (this.epoch > 0) {
+      // Don't compute a commitment for the first coefficient, as `0`
+      //  doesn't have a (modular) multiplicative inverse.
+      commitments = coefficients.slice(1).map((coef) =>
+        this.curve.G.scalarMul(coef)
+      );
+    }
+
+    this.commitments = commitments;
+
+    return this.commitments;
+  }
+
   broadcastCommitments(): void {
+    if (!this.commitments) {
+      throw new Error(`Commitments of party #${this.id} not set...`);
+    }
+
     this.broadcast({
       type: Message.Commitments,
       data: {
@@ -261,7 +326,7 @@ export class Party implements P2P {
   }
 
   calculateSecretShare(): bigint {
-    const ownY = this.f(BigInt(this.id));
+    const ownY = this.polynomial.evaluate(BigInt(this.id));
 
     let result = ownY;
     for (const [key, data] of Object.entries(this.parties)) {
@@ -275,12 +340,22 @@ export class Party implements P2P {
       result = mod(result + data.y, this.curve.n);
     }
 
+    // Refresh secret share if we're past the initial epoch.
+    if (this.epoch > 0) {
+      // deno-lint-ignore no-non-null-assertion
+      result = mod(this.secretShare! + result, this.curve.n);
+    }
+
     this.secretShare = result;
 
     return this.secretShare;
   }
 
   calculatePublicKey(): Point {
+    if (!this.commitments) {
+      throw new Error(`Commitments of party #${this.id} not set...`);
+    }
+
     const ownZeroCommitment = this.commitments[0];
 
     let result = ownZeroCommitment;
@@ -319,12 +394,14 @@ export class Party implements P2P {
       return false;
     }
 
+    const schnorr = new SchnorrSignature();
+
     const pk = commitments[0];
-    return await this.schnorr.verify(pk, pk2Bytes(pk), kosk);
+    return await schnorr.verify(pk, pk2Bytes(pk), kosk);
   }
 
   private computeEvaluation(id: Id): bigint {
-    return this.f(BigInt(id));
+    return this.polynomial.evaluate(BigInt(id));
   }
 
   private verifyEvaluation(id: Id): boolean {
@@ -335,28 +412,26 @@ export class Party implements P2P {
 
     const left = this.curve.G.scalarMul(y);
     const right = commitments.reduce(
-      (accum, comm, idx) => accum.add(comm.scalarMul(BigInt(this.id ** idx))),
+      (accum, comm, idx) =>
+        accum.add(
+          comm.scalarMul(BigInt(this.id ** (idx + (this.epoch > 0 ? 1 : 0)))),
+        ),
       Point.infinity(this.curve),
     );
 
     return left.x === right.x && left.y === right.y;
   }
 
-  private constructor(
-    id: Id,
-    curve: Curve,
-    polynomial: Polynomial,
-    commitments: Point[],
-    kosk: Signature,
-    schnorr: SchnorrSignature,
-  ) {
-    this.id = id;
-    this.curve = curve;
+  private generatePolynomial(): Polynomial {
+    const polynomial = new Polynomial(this.t - 1, this.curve.n);
+
+    if (this.epoch > 0) {
+      polynomial.coefficients[0] = 0n;
+    }
+
     this.polynomial = polynomial;
-    this.commitments = commitments;
-    this.kosk = kosk;
-    this.f = polynomial.evaluate.bind(this.polynomial);
-    this.schnorr = schnorr;
+
+    return this.polynomial;
   }
 }
 

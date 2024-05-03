@@ -2,7 +2,6 @@ import { expect } from "$std/expect/mod.ts";
 import { beforeAll, describe, it } from "$std/testing/bdd.ts";
 
 import { DKG, Party } from "./main.ts";
-import { mod } from "../shared/utils.ts";
 import { Secp256k1 } from "../shared/ecc/curve.ts";
 import { Lagrange } from "../lagrange-interpolation/main.ts";
 
@@ -18,12 +17,14 @@ describe("Distributed Key Generation", () => {
     const t = 2;
     const n = 3;
 
-    const dkg = await DKG.init(t, n, curve);
-    await dkg.run();
+    const dkg = new DKG(t, n, curve);
+    const pk = await dkg.run();
 
-    const [s, sPrime] = calculateSecrets(dkg.parties, t, curve.n);
+    const sk = recoverSecret(dkg.parties, t, curve.n);
+    const pkPrime = curve.G.scalarMul(sk);
 
-    expect(sPrime).toBe(s);
+    expect(pk.x).toEqual(pkPrime.x);
+    expect(pk.y).toEqual(pkPrime.y);
   });
 
   it("should derive a key pair and be able to recover the private key if the threshold is exceeded", async () => {
@@ -31,12 +32,14 @@ describe("Distributed Key Generation", () => {
     const t = 2;
     const n = 3;
 
-    const dkg = await DKG.init(t, n, curve);
-    await dkg.run();
+    const dkg = new DKG(t, n, curve);
+    const pk = await dkg.run();
 
-    const [s, sPrime] = calculateSecrets(dkg.parties, n, curve.n);
+    const sk = recoverSecret(dkg.parties, n, curve.n);
+    const pkPrime = curve.G.scalarMul(sk);
 
-    expect(sPrime).toBe(s);
+    expect(pk.x).toEqual(pkPrime.x);
+    expect(pk.y).toEqual(pkPrime.y);
   });
 
   it("should derive a key pair and not be able to recover the private key if the threshold is not met", async () => {
@@ -44,34 +47,55 @@ describe("Distributed Key Generation", () => {
     const t = 2;
     const n = 3;
 
-    const dkg = await DKG.init(t, n, curve);
-    await dkg.run();
+    const dkg = new DKG(t, n, curve);
+    const pk = await dkg.run();
 
-    const [s, sPrime] = calculateSecrets(dkg.parties, t - 1, curve.n);
+    const sk = recoverSecret(dkg.parties, t - 1, curve.n);
+    const pkPrime = curve.G.scalarMul(sk);
 
-    expect(sPrime).not.toBe(s);
+    expect(pk.x).not.toEqual(pkPrime.x);
+    expect(pk.y).not.toEqual(pkPrime.y);
+  });
+
+  it("should refresh secret shares while preserving the private- and public key", async () => {
+    // 2 / 3 Scheme.
+    const t = 2;
+    const n = 3;
+
+    const dkg = new DKG(t, n, curve);
+    const pk = await dkg.run();
+
+    const secretShares = dkg.parties.map((party) => party.secretShare);
+
+    dkg.refresh();
+
+    // Each party's secret share should be different.
+    const secretSharesPrime = dkg.parties.map((party) => party.secretShare);
+    expect(secretShares).not.toEqual(secretSharesPrime);
+
+    // The secret that can be recovered with the refreshed secret shares
+    // should still allow for the computation of the same public key.
+    const sk = recoverSecret(dkg.parties, t, curve.n);
+    const pkPrime = curve.G.scalarMul(sk);
+
+    expect(pk.x).toEqual(pkPrime.x);
+    expect(pk.y).toEqual(pkPrime.y);
   });
 });
 
-function calculateSecrets(
+function recoverSecret(
   parties: Party[],
   t: number,
   modulus: bigint,
-): bigint[] {
+): bigint {
   const lagrange = new Lagrange(modulus);
 
-  const secret = parties.slice(0, t + 1).reduce(
-    (accum, party) => mod(accum + party.polynomial.coefficients[0], modulus),
-    0n,
-  );
-
-  const evaluations = parties.map((party) => ({
+  const evaluations = parties.slice(0, t).map((party) => ({
     x: BigInt(party.id),
     // deno-lint-ignore no-non-null-assertion
     y: party.secretShare!,
   }));
   const f = lagrange.interpolate(evaluations);
-  const secretPrime = f(0n);
 
-  return [secret, secretPrime];
+  return f(0n);
 }
