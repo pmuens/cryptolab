@@ -72,33 +72,12 @@ export class DKG {
 
     return pks[0];
   }
-
-  refresh(): void {
-    for (const party of this.parties) {
-      party.incrementEpoch();
-      party.setPolynomial();
-      party.setCommitments();
-      party.broadcastCommitments();
-    }
-    for (const party of this.parties) {
-      for (const key of Object.keys(party.partyData)) {
-        const id = Number(key);
-        const y = party.evaluatePolynomial(id);
-        party.sendEvaluation(id, y);
-      }
-    }
-    for (const party of this.parties) {
-      party.verifyEvaluations();
-      party.setSecretShare();
-    }
-  }
 }
 
 export class Party {
   id: Id;
   t: number;
   curve: Curve;
-  epoch = 0;
   polynomial?: Polynomial;
   commitments?: Point[];
   kosk?: Signature;
@@ -122,26 +101,15 @@ export class Party {
 
   setPolynomial(): void {
     this.polynomial = new Polynomial(this.t - 1, this.curve.n);
-
-    if (this.epoch > 0) {
-      // For a secret share refresh we need to set the constant term to `0` so
-      //  that the original secret share is preserved when adding up the
-      //  polynomials of all parties.
-      this.polynomial.coefficients[0] = 0n;
-    }
   }
 
   setCommitments(): void {
     if (!this.polynomial) {
       throw new Error(`Polynomial of party #${this.id} not set...`);
     }
-
-    // If we're past the initial epoch, we shouldn't compute a commitment for
-    //  the first coefficient as `0` doesn't have a (modular) multiplicative
-    //  inverse.
-    this.commitments = this.polynomial.coefficients.slice(
-      this.epoch > 0 ? 1 : 0,
-    ).map((coef) => this.curve.G.scalarMul(coef));
+    this.commitments = this.polynomial.coefficients.map((coef) =>
+      this.curve.G.scalarMul(coef)
+    );
   }
 
   async setKosk(): Promise<void> {
@@ -240,7 +208,7 @@ export class Party {
           (accum, comm, idx) =>
             accum.add(
               comm.scalarMul(
-                BigInt(this.id ** (idx + (this.epoch > 0 ? 1 : 0))),
+                BigInt(this.id ** idx),
               ),
             ),
           Point.infinity(this.curve),
@@ -273,11 +241,6 @@ export class Party {
       }
 
       result = mod(result + value.y, this.curve.n);
-    }
-
-    // Refresh secret share if we're past the initial epoch.
-    if (this.secretShare && this.epoch > 0) {
-      result = mod(this.secretShare + result, this.curve.n);
     }
 
     this.secretShare = result;
@@ -315,10 +278,6 @@ export class Party {
       send,
       receive,
     };
-  }
-
-  incrementEpoch(): void {
-    this.epoch += 1;
   }
 
   private broadcast(payload: Payload): void {
