@@ -6,13 +6,8 @@ import { mod, pk2Bytes } from "../shared/utils.ts";
 import { Polynomial } from "../shared/polynomial.ts";
 import { SchnorrSignature, Signature } from "../schnorr-signature/main.ts";
 
-// The following is an implementation of the Distributed Key Generation algorithm described in the
-//  [FROST: Flexible Round-Optimized Schnorr Threshold Signatures](https://eprint.iacr.org/2020/852) paper.
-// The implementation extends the algorithm in the paper by also offering a way to refresh secret
-//  shares.
 export class DKG {
-  t: number;
-  parties: Party[] = [];
+  parties: Party[];
 
   constructor(t: number, n: number, curve: Curve) {
     const parties: Party[] = [];
@@ -22,151 +17,94 @@ export class DKG {
       parties.push(new Party(id, t, curve));
     }
 
-    this.t = t;
-    this.parties = parties;
-  }
-
-  async run(): Promise<Point> {
-    this.establishConnections();
-
-    // Round #1.
-    this.generateCommitments();
-    await this.generateKosk();
-    this.broadcastKosk();
-    this.broadcastCommitments();
-    await this.verifyKosks();
-
-    // Round #2.
-    this.sendEvaluations();
-    this.verifyEvaluations();
-    this.calculateSecretShare();
-    return this.calculatePublicKey();
-  }
-
-  refresh(): void {
-    this.updatePolynomial();
-    this.generateCommitments();
-    this.broadcastCommitments();
-
-    this.sendEvaluations();
-    this.verifyEvaluations();
-
-    this.calculateSecretShare();
-  }
-
-  private establishConnections(): void {
-    for (const self of this.parties) {
-      for (const other of this.parties) {
+    // Connect parties with each other.
+    for (const self of parties) {
+      for (const other of parties) {
         if (self.id !== other.id) {
           self.connect(other);
         }
       }
     }
+
+    this.parties = parties;
   }
 
-  private updatePolynomial(): void {
-    for (const party of this.parties) {
-      party.updatePolynomial();
-    }
-  }
-
-  private async generateKosk(): Promise<void> {
-    const promises: Promise<Signature>[] = [];
-
-    for (const party of this.parties) {
-      promises.push(party.generateKosk());
-    }
-
-    await Promise.all(promises);
-  }
-
-  private broadcastKosk(): void {
-    for (const party of this.parties) {
+  async keygen(): Promise<Point> {
+    // --- Round #1 ---
+    for await (const party of this.parties) {
+      party.setPolynomial();
+      party.setCommitments();
+      await party.setKosk();
       party.broadcastKosk();
-    }
-  }
-
-  private generateCommitments(): void {
-    for (const party of this.parties) {
-      party.generateCommitments();
-    }
-  }
-
-  private broadcastCommitments(): void {
-    for (const party of this.parties) {
       party.broadcastCommitments();
     }
-  }
+    for await (const party of this.parties) {
+      await party.verifyKosks();
+    }
 
-  private async verifyKosks(): Promise<void> {
-    const promises: Promise<boolean>[] = [];
+    // --- Round #2 ---
     for (const party of this.parties) {
-      promises.push(party.verifyKosks());
+      for (const key of Object.keys(party.partyData)) {
+        const id = Number(key);
+        const y = party.evaluatePolynomial(id);
+        party.sendEvaluation(id, y);
+      }
     }
-
-    const results = await Promise.all(promises);
-    const allValid = results.every((result) => result === true);
-
-    if (!allValid) {
-      throw new Error("Error validating KOSKs...");
-    }
-  }
-
-  private sendEvaluations(): void {
-    for (const party of this.parties) {
-      party.sendEvaluations();
-    }
-  }
-
-  private verifyEvaluations(): void {
-    const results: boolean[] = [];
-
-    for (const party of this.parties) {
-      results.push(party.verifyEvaluations());
-    }
-
-    const allValid = results.every((result) => result === true);
-
-    if (!allValid) {
-      throw new Error("Error validating evaluations...");
-    }
-  }
-
-  private calculateSecretShare(): void {
-    for (const party of this.parties) {
-      party.calculateSecretShare();
-    }
-  }
-
-  private calculatePublicKey(): Point {
     const pks: Point[] = [];
-
     for (const party of this.parties) {
-      pks.push(party.calculatePublicKey());
+      party.verifyEvaluations();
+      party.setSecretShare();
+      party.setPublicKey();
+      if (!party.publicKey) {
+        throw new Error(`Public Key of party #${party.id} not set...`);
+      }
+      pks.push(party.publicKey);
     }
 
     // See: https://stackoverflow.com/a/35568895
-    const allEqual = pks.every((pk) => pk.x === pks[0].x && pk.y === pks[0].y);
+    const allPksEqual = pks.every((pk) =>
+      pk.x === pks[0].x && pk.y === pks[0].y
+    );
 
-    if (!allEqual) {
+    if (!allPksEqual) {
       throw new Error("Public Keys aren't all equal...");
     }
 
     return pks[0];
   }
+
+  refresh(): void {
+    for (const party of this.parties) {
+      party.incrementEpoch();
+      party.setPolynomial();
+      party.setCommitments();
+      party.broadcastCommitments();
+    }
+    for (const party of this.parties) {
+      for (const key of Object.keys(party.partyData)) {
+        const id = Number(key);
+        const y = party.evaluatePolynomial(id);
+        party.sendEvaluation(id, y);
+      }
+    }
+    for (const party of this.parties) {
+      party.verifyEvaluations();
+      party.setSecretShare();
+    }
+  }
 }
 
-export class Party implements P2P {
+export class Party {
   id: Id;
   t: number;
-  epoch = 0;
   curve: Curve;
-  polynomial: Polynomial;
-  kosk?: Signature;
+  epoch = 0;
+  polynomial?: Polynomial;
   commitments?: Point[];
+  kosk?: Signature;
   secretShare?: bigint;
   publicKey?: Point;
-  parties: PartyData = {};
+  partyData: Data = {};
 
   constructor(
     id: Id,
@@ -180,55 +118,37 @@ export class Party implements P2P {
     this.id = id;
     this.t = t;
     this.curve = curve;
-
-    this.polynomial = this.generatePolynomial();
   }
 
-  connect(party: Party): void {
-    const id = party.id;
-    const send = party.send.bind(party);
-    const receive = party.receive.bind(party);
+  setPolynomial(): void {
+    this.polynomial = new Polynomial(this.t - 1, this.curve.n);
 
-    this.parties[id] = {
-      send,
-      receive,
-    };
-  }
-
-  broadcast(payload: Payload): void {
-    for (const key of Object.keys(this.parties)) {
-      const id = Number(key);
-      this.send(id, payload);
+    if (this.epoch > 0) {
+      // For a secret share refresh we need to set the constant term to `0` so
+      //  that the original secret share is preserved when adding up the
+      //  polynomials of all parties.
+      this.polynomial.coefficients[0] = 0n;
     }
   }
 
-  send(to: Id, payload: Payload): void {
-    // deno-lint-ignore no-non-null-assertion
-    this.parties[to].receive!(this.id, payload);
-  }
-
-  receive(from: Id, payload: Payload): void {
-    switch (payload.type) {
-      case Message.Kosk:
-        this.parties[from].kosk = payload.data.kosk;
-        break;
-      case Message.Commitments:
-        this.parties[from].commitments = payload.data.commitments;
-        break;
-      case Message.Evaluation:
-        this.parties[from].y = payload.data.y;
-        break;
+  setCommitments(): void {
+    if (!this.polynomial) {
+      throw new Error(`Polynomial of party #${this.id} not set...`);
     }
+
+    // If we're past the initial epoch, we shouldn't compute a commitment for
+    //  the first coefficient as `0` doesn't have a (modular) multiplicative
+    //  inverse.
+    this.commitments = this.polynomial.coefficients.slice(
+      this.epoch > 0 ? 1 : 0,
+    ).map((coef) => this.curve.G.scalarMul(coef));
   }
 
-  updatePolynomial(): Polynomial {
-    this.epoch += 1;
-    this.polynomial = this.generatePolynomial();
-    return this.polynomial;
-  }
-
-  async generateKosk(): Promise<Signature> {
-    if (!this.commitments) {
+  async setKosk(): Promise<void> {
+    if (!this.polynomial) {
+      throw new Error(`Polynomial of party #${this.id} not set...`);
+    }
+    if (!this.commitments || !this.commitments.length) {
       throw new Error(`Commitments of party #${this.id} not set...`);
     }
 
@@ -240,8 +160,6 @@ export class Party implements P2P {
     assert(schnorr.pk.x === pk.x && schnorr.pk.y === pk.y);
 
     this.kosk = await schnorr.sign(pk2Bytes(pk));
-
-    return this.kosk;
   }
 
   broadcastKosk(): void {
@@ -257,25 +175,8 @@ export class Party implements P2P {
     });
   }
 
-  generateCommitments(): Point[] {
-    const { coefficients } = this.polynomial;
-    let commitments = coefficients.map((coef) => this.curve.G.scalarMul(coef));
-
-    if (this.epoch > 0) {
-      // Don't compute a commitment for the first coefficient, as `0`
-      //  doesn't have a (modular) multiplicative inverse.
-      commitments = coefficients.slice(1).map((coef) =>
-        this.curve.G.scalarMul(coef)
-      );
-    }
-
-    this.commitments = commitments;
-
-    return this.commitments;
-  }
-
   broadcastCommitments(): void {
-    if (!this.commitments) {
+    if (!this.commitments || !this.commitments.length) {
       throw new Error(`Commitments of party #${this.id} not set...`);
     }
 
@@ -287,71 +188,102 @@ export class Party implements P2P {
     });
   }
 
-  async verifyKosks(): Promise<boolean> {
-    const promises: Promise<boolean>[] = [];
-    for (const key of Object.keys(this.parties)) {
-      const id = Number(key);
-      promises.push(this.verifyKosk(id));
-    }
+  async verifyKosks(): Promise<void> {
+    const schnorr = new SchnorrSignature(1n, this.curve);
 
+    const promises: Promise<boolean>[] = [];
+    for (const key of Object.keys(this.partyData)) {
+      const id = Number(key);
+      const { kosk, commitments } = this.partyData[id];
+      if (!kosk || !commitments) {
+        promises.push(Promise.resolve(false));
+      } else {
+        const pk = commitments[0];
+        promises.push(schnorr.verify(pk, pk2Bytes(pk), kosk));
+      }
+    }
     const results = await Promise.all(promises);
 
-    return results.every((result) => result === true);
-  }
-
-  sendEvaluations(): void {
-    const evaluations = this.computeEvaluations();
-
-    for (const evaluation of evaluations) {
-      const { id, y } = evaluation;
-
-      this.send(id, {
-        type: Message.Evaluation,
-        data: {
-          y,
-        },
-      });
+    const allValid = results.every((result) => result === true);
+    if (!allValid) {
+      throw new Error("Error validating KOSKs...");
     }
   }
 
-  verifyEvaluations(): boolean {
+  evaluatePolynomial(x: number): bigint {
+    if (!this.polynomial) {
+      throw new Error(`Polynomial of party #${this.id} not set...`);
+    }
+    return this.polynomial.evaluate(BigInt(x));
+  }
+
+  sendEvaluation(id: Id, y: bigint): void {
+    this.send(id, {
+      type: Message.Evaluation,
+      data: {
+        y,
+      },
+    });
+  }
+
+  verifyEvaluations(): void {
     const results: boolean[] = [];
 
-    for (const key of Object.keys(this.parties)) {
+    for (const key of Object.keys(this.partyData)) {
       const id = Number(key);
-      results.push(this.verifyEvaluation(id));
+      const { commitments, y } = this.partyData[id];
+      if (!commitments || !y) {
+        results.push(false);
+      } else {
+        const left = this.curve.G.scalarMul(y);
+        const right = commitments.reduce(
+          (accum, comm, idx) =>
+            accum.add(
+              comm.scalarMul(
+                BigInt(this.id ** (idx + (this.epoch > 0 ? 1 : 0))),
+              ),
+            ),
+          Point.infinity(this.curve),
+        );
+
+        results.push(left.x === right.x && left.y === right.y);
+      }
     }
 
-    return results.every((result) => result === true);
+    const allValid = results.every((result) => result === true);
+    if (!allValid) {
+      throw new Error("Error validating evaluations...");
+    }
   }
 
-  calculateSecretShare(): bigint {
+  setSecretShare(): void {
+    if (!this.polynomial) {
+      throw new Error(`Polynomial of party #${this.id} not set...`);
+    }
+
     const ownY = this.polynomial.evaluate(BigInt(this.id));
 
     let result = ownY;
-    for (const [key, data] of Object.entries(this.parties)) {
-      if (!data.y) {
+    for (const [key, value] of Object.entries(this.partyData)) {
+      if (!value.y) {
         const id = Number(key);
         throw new Error(
           `Party #${this.id} is missing the Y value from party #${id}...`,
         );
       }
 
-      result = mod(result + data.y, this.curve.n);
+      result = mod(result + value.y, this.curve.n);
     }
 
     // Refresh secret share if we're past the initial epoch.
-    if (this.epoch > 0) {
-      // deno-lint-ignore no-non-null-assertion
-      result = mod(this.secretShare! + result, this.curve.n);
+    if (this.secretShare && this.epoch > 0) {
+      result = mod(this.secretShare + result, this.curve.n);
     }
 
     this.secretShare = result;
-
-    return this.secretShare;
   }
 
-  calculatePublicKey(): Point {
+  setPublicKey(): void {
     if (!this.commitments) {
       throw new Error(`Commitments of party #${this.id} not set...`);
     }
@@ -359,79 +291,60 @@ export class Party implements P2P {
     const ownZeroCommitment = this.commitments[0];
 
     let result = ownZeroCommitment;
-    for (const [key, data] of Object.entries(this.parties)) {
-      if (!data.commitments?.length) {
+    for (const [key, value] of Object.entries(this.partyData)) {
+      if (!value.commitments || !value.commitments.length) {
         const id = Number(key);
         throw new Error(
           `Party #${this.id} is missing commitments from party #${id}...`,
         );
       }
 
-      const zeroCommitment = data.commitments[0];
+      const zeroCommitment = value.commitments[0];
       result = result.add(zeroCommitment);
     }
 
     this.publicKey = result;
-
-    return this.publicKey;
   }
 
-  private computeEvaluations(): { id: Id; y: bigint }[] {
-    const results: { id: Id; y: bigint }[] = [];
+  connect(party: Party): void {
+    const id = party.id;
+    const send = party.send.bind(party);
+    const receive = party.receive.bind(party);
 
-    for (const [key] of Object.keys(this.parties)) {
+    this.partyData[id] = {
+      send,
+      receive,
+    };
+  }
+
+  incrementEpoch(): void {
+    this.epoch += 1;
+  }
+
+  private broadcast(payload: Payload): void {
+    for (const key of Object.keys(this.partyData)) {
       const id = Number(key);
-      const y = this.computeEvaluation(id);
-      results.push({ id, y });
+      this.send(id, payload);
     }
-
-    return results;
   }
 
-  private async verifyKosk(id: Id): Promise<boolean> {
-    const { kosk, commitments } = this.parties[id];
-    if (!kosk || !commitments) {
-      return false;
-    }
-
-    const schnorr = new SchnorrSignature();
-
-    const pk = commitments[0];
-    return await schnorr.verify(pk, pk2Bytes(pk), kosk);
+  private send(to: Id, payload: Payload): void {
+    // deno-lint-ignore no-non-null-assertion
+    this.partyData[to].receive!(this.id, payload);
   }
 
-  private computeEvaluation(id: Id): bigint {
-    return this.polynomial.evaluate(BigInt(id));
-  }
-
-  private verifyEvaluation(id: Id): boolean {
-    const { commitments, y } = this.parties[id];
-    if (!commitments || !y) {
-      return false;
+  private receive(from: Id, payload: Payload): void {
+    switch (payload.type) {
+      case Message.Kosk:
+        this.partyData[from].kosk = payload.data.kosk;
+        break;
+      case Message.Commitments:
+        this.partyData[from].commitments = payload.data.commitments;
+        break;
+      case Message.Evaluation:
+        this.partyData[from].y = payload.data.y;
+        break;
     }
-
-    const left = this.curve.G.scalarMul(y);
-    const right = commitments.reduce(
-      (accum, comm, idx) =>
-        accum.add(
-          comm.scalarMul(BigInt(this.id ** (idx + (this.epoch > 0 ? 1 : 0)))),
-        ),
-      Point.infinity(this.curve),
-    );
-
-    return left.x === right.x && left.y === right.y;
-  }
-
-  private generatePolynomial(): Polynomial {
-    const polynomial = new Polynomial(this.t - 1, this.curve.n);
-
-    if (this.epoch > 0) {
-      polynomial.coefficients[0] = 0n;
-    }
-
-    this.polynomial = polynomial;
-
-    return this.polynomial;
   }
 }
 
@@ -441,7 +354,7 @@ type Send = (to: Id, payload: Payload) => void;
 
 type Receive = (from: Id, payload: Payload) => void;
 
-type PartyData = {
+type Data = {
   [id: Id]: {
     send?: Send;
     receive?: Receive;
@@ -450,13 +363,6 @@ type PartyData = {
     y?: bigint;
   };
 };
-
-interface P2P {
-  connect(other: Party): void;
-  send: Send;
-  receive: Receive;
-  broadcast(payload: Payload): void;
-}
 
 type Payload = {
   type: Message.Kosk;

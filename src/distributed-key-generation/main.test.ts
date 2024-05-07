@@ -18,7 +18,7 @@ describe("Distributed Key Generation", () => {
     const n = 3;
 
     const dkg = new DKG(t, n, curve);
-    const pk = await dkg.run();
+    const pk = await dkg.keygen();
 
     const sk = recoverSecret(dkg.parties, t, curve.n);
     const pkPrime = curve.G.scalarMul(sk);
@@ -33,7 +33,7 @@ describe("Distributed Key Generation", () => {
     const n = 3;
 
     const dkg = new DKG(t, n, curve);
-    const pk = await dkg.run();
+    const pk = await dkg.keygen();
 
     const sk = recoverSecret(dkg.parties, n, curve.n);
     const pkPrime = curve.G.scalarMul(sk);
@@ -48,7 +48,7 @@ describe("Distributed Key Generation", () => {
     const n = 3;
 
     const dkg = new DKG(t, n, curve);
-    const pk = await dkg.run();
+    const pk = await dkg.keygen();
 
     const sk = recoverSecret(dkg.parties, t - 1, curve.n);
     const pkPrime = curve.G.scalarMul(sk);
@@ -63,7 +63,7 @@ describe("Distributed Key Generation", () => {
     const n = 3;
 
     const dkg = new DKG(t, n, curve);
-    const pk = await dkg.run();
+    const pk = await dkg.keygen();
 
     const secretShares = dkg.parties.map((party) => party.secretShare);
 
