@@ -4,6 +4,7 @@ import { Point } from "../shared/ecc/point.ts";
 import { Curve } from "../shared/ecc/curve.ts";
 import { mod, pk2Bytes } from "../shared/utils.ts";
 import { Polynomial } from "../shared/polynomial.ts";
+import { Id, P2P, Receive, Send } from "../shared/types.ts";
 import { SchnorrSignature, Signature } from "../schnorr-signature/main.ts";
 
 export class DKG {
@@ -74,7 +75,7 @@ export class DKG {
   }
 }
 
-export class Party {
+export class Party implements P2P<Party, Payload> {
   id: Id;
   t: number;
   curve: Curve;
@@ -280,19 +281,19 @@ export class Party {
     };
   }
 
-  private broadcast(payload: Payload): void {
+  broadcast(payload: Payload): void {
     for (const key of Object.keys(this.partyData)) {
       const id = Number(key);
       this.send(id, payload);
     }
   }
 
-  private send(to: Id, payload: Payload): void {
+  send(to: Id, payload: Payload): void {
     // deno-lint-ignore no-non-null-assertion
     this.partyData[to].receive!(this.id, payload);
   }
 
-  private receive(from: Id, payload: Payload): void {
+  receive(from: Id, payload: Payload): void {
     switch (payload.type) {
       case Message.Kosk:
         this.partyData[from].kosk = payload.data.kosk;
@@ -307,16 +308,10 @@ export class Party {
   }
 }
 
-type Id = number;
-
-type Send = (to: Id, payload: Payload) => void;
-
-type Receive = (from: Id, payload: Payload) => void;
-
 type Data = {
   [id: Id]: {
-    send?: Send;
-    receive?: Receive;
+    send?: Send<Payload>;
+    receive?: Receive<Payload>;
     kosk?: Signature;
     commitments?: Point[];
     y?: bigint;
