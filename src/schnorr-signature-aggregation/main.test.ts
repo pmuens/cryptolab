@@ -1,27 +1,42 @@
 import { expect } from "$std/expect/mod.ts";
-import { describe, it } from "$std/testing/bdd.ts";
+import { beforeAll, describe, it } from "$std/testing/bdd.ts";
 
-import { pk2Bytes } from "../shared/utils.ts";
-import { SchnorrSignatureAggregation } from "./main.ts";
+import { Aggregator } from "./main.ts";
+import { Point } from "../shared/ecc/point.ts";
+import { Secp256k1 } from "../shared/ecc/curve.ts";
 import { SchnorrSignature } from "../schnorr-signature/main.ts";
 
 describe("Schnorr Signature Aggregation", () => {
-  it("should generate a valid signature with multiple participants", async () => {
-    const alice = new SchnorrSignature();
-    const bob = new SchnorrSignature();
-    const carol = new SchnorrSignature();
+  let curve: Secp256k1;
 
-    const schnorrClassic = new SchnorrSignature();
-    const schnorrAggregated = await SchnorrSignatureAggregation.init([
-      { schnorr: alice, kosk: await alice.sign(pk2Bytes(alice.pk)) },
-      { schnorr: bob, kosk: await bob.sign(pk2Bytes(bob.pk)) },
-      { schnorr: carol, kosk: await carol.sign(pk2Bytes(carol.pk)) },
-    ]);
-    const publicKey = schnorrAggregated.pk;
+  beforeAll(() => {
+    curve = new Secp256k1();
+  });
 
-    const message = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    const signature = await schnorrAggregated.sign(message);
-    const isValid = await schnorrClassic.verify(publicKey, message, signature);
+  it("should generate a shared public key", async () => {
+    const aggregator = new Aggregator(3, curve);
+
+    const pk = await aggregator.keygen();
+
+    const pkPrime = aggregator.parties.reduce<Point>(
+      (accum, party) => accum.add(party.schnorr.pk),
+      Point.infinity(curve),
+    );
+
+    expect(pk.x).toEqual(pkPrime.x);
+    expect(pk.y).toEqual(pkPrime.y);
+  });
+
+  it("should sign a message collaboratively", async () => {
+    const aggregator = new Aggregator(3, curve);
+
+    const pk = await aggregator.keygen();
+
+    const msg = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const sig = await aggregator.sign(msg);
+
+    const schnorr = new SchnorrSignature();
+    const isValid = await schnorr.verify(pk, msg, sig);
 
     expect(isValid).toBe(true);
   });

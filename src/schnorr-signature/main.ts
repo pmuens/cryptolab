@@ -52,7 +52,7 @@ export class SchnorrSignature extends ECC {
     return await this.curve.bytes2Scalar(data);
   }
 
-  private createNonce(): { r: bigint; R: Point } {
+  createNonce(): Nonce {
     const r = getRandomNumber(32, this.curve.n);
     const R = this.G.scalarMul(r);
 
@@ -66,4 +66,9 @@ export class SchnorrSignature extends ECC {
 export type Signature = {
   R: Point;
   e: bigint;
+};
+
+export type Nonce = {
+  R: Point;
+  r: bigint;
 };
